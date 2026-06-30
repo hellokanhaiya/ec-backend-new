@@ -1,0 +1,48 @@
+server:
+  port: 8080
+  forward-headers-strategy: framework
+
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:ecommerce_db;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.h2.Driver}
+  mail:
+    # Recommended low-cost SMTP option: Amazon SES.
+    # Set MAIL_HOST to your SES SMTP endpoint, for example:
+    # email-smtp.us-east-1.amazonaws.com
+    # Local development fallback: MailHog on localhost:1025
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:40a0ac64810b7b}
+    password: ${MAIL_PASSWORD:7afd3fd1a4016b}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:false}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS:false}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+    defer-datasource-initialization: true
+  h2:
+    console:
+      enabled: true
+
+app:
+  mail:
+    from: ${APP_MAIL_FROM:no-reply@ecommerce.local}
+  geo:
+    device-token: ${GEO_DEVICE_TOKEN:st_tkn_8f92a1b7c3d4e5f6}
+    lookup-base-url: ${GEO_LOOKUP_BASE_URL:https://ipapi.co}
+    public-ip-url: ${GEO_PUBLIC_IP_URL:https://api.ipify.org?format=json}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000}

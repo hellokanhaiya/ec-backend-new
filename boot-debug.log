@@ -1,0 +1,312 @@
+[INFO] Error stacktraces are turned on.
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ------------------< com.ecommerce:ecommerce-backend >-------------------
+[INFO] Building ecommerce-backend 0.0.1-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] >>> spring-boot:3.4.13:run (default-cli) > test-compile @ ecommerce-backend >>>
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ ecommerce-backend ---
+[INFO] Copying 1 resource from src\main\resources to target\classes
+[INFO] Copying 0 resource from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ ecommerce-backend ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 38 source files with javac [debug parameters release 17] to target\classes
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ ecommerce-backend ---
+[INFO] skip non existing resourceDirectory D:\Code With Kanhaiya\My Currior Project\ecommerce-backend\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ ecommerce-backend ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 1 source file with javac [debug parameters release 17] to target\test-classes
+[INFO] 
+[INFO] <<< spring-boot:3.4.13:run (default-cli) < test-compile @ ecommerce-backend <<<
+[INFO] 
+[INFO] 
+[INFO] --- spring-boot:3.4.13:run (default-cli) @ ecommerce-backend ---
+[INFO] Attaching agents: []
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::               (v3.4.13)
+
+2026-06-30T09:00:10.532+05:30  INFO 18692 --- [           main] com.ecommerce.EcommerceApplication       : Starting EcommerceApplication using Java 17.0.19 with PID 18692 (D:\Code With Kanhaiya\My Currior Project\ecommerce-backend\target\classes started by kanha in D:\Code With Kanhaiya\My Currior Project\ecommerce-backend)
+2026-06-30T09:00:10.535+05:30  INFO 18692 --- [           main] com.ecommerce.EcommerceApplication       : No active profile set, falling back to 1 default profile: "default"
+2026-06-30T09:00:11.052+05:30  INFO 18692 --- [           main] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2026-06-30T09:00:11.125+05:30  INFO 18692 --- [           main] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 65 ms. Found 7 JPA repository interfaces.
+2026-06-30T09:00:11.608+05:30  INFO 18692 --- [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat initialized with port 8080 (http)
+2026-06-30T09:00:11.619+05:30  INFO 18692 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-06-30T09:00:11.620+05:30  INFO 18692 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/10.1.50]
+2026-06-30T09:00:11.663+05:30  INFO 18692 --- [           main] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring embedded WebApplicationContext
+2026-06-30T09:00:11.664+05:30  INFO 18692 --- [           main] w.s.c.ServletWebServerApplicationContext : Root WebApplicationContext: initialization completed in 1094 ms
+2026-06-30T09:00:11.782+05:30  INFO 18692 --- [           main] o.hibernate.jpa.internal.util.LogHelper  : HHH000204: Processing PersistenceUnitInfo [name: default]
+2026-06-30T09:00:11.817+05:30  INFO 18692 --- [           main] org.hibernate.Version                    : HHH000412: Hibernate ORM core version 6.6.39.Final
+2026-06-30T09:00:11.843+05:30  INFO 18692 --- [           main] o.h.c.internal.RegionFactoryInitiator    : HHH000026: Second-level cache disabled
+2026-06-30T09:00:12.056+05:30  INFO 18692 --- [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-06-30T09:00:12.083+05:30  INFO 18692 --- [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
+2026-06-30T09:00:12.246+05:30  INFO 18692 --- [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection conn0: url=jdbc:h2:mem:ecommerce_db user=SA
+2026-06-30T09:00:12.248+05:30  INFO 18692 --- [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+2026-06-30T09:00:12.298+05:30  INFO 18692 --- [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [Connecting through datasource 'HikariDataSource (HikariPool-1)']
+	Database driver: undefined/unknown
+	Database version: 2.3.232
+	Autocommit mode: undefined/unknown
+	Isolation level: undefined/unknown
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-06-30T09:00:13.028+05:30  INFO 18692 --- [           main] o.h.e.t.j.p.i.JtaPlatformInitiator       : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+Hibernate: 
+    create table admin_auth_sessions (
+        id bigint generated by default as identity,
+        access_token_hash varchar(128) not null,
+        created_at timestamp(6) with time zone not null,
+        expires_at timestamp(6) with time zone not null,
+        refresh_token_hash varchar(128) not null,
+        revoked_at timestamp(6) with time zone,
+        updated_at timestamp(6) with time zone not null,
+        user_id bigint not null,
+        primary key (id)
+    )
+Hibernate: 
+    create table admin_auth_users (
+        id bigint generated by default as identity,
+        created_at timestamp(6) with time zone not null,
+        display_name varchar(255),
+        email varchar(255),
+        email_verified_at timestamp(6) with time zone,
+        phone_number varchar(32),
+        phone_verified_at timestamp(6) with time zone,
+        public_id varchar(36) not null,
+        status enum ('ACTIVE','BLOCKED','PENDING') not null,
+        updated_at timestamp(6) with time zone not null,
+        primary key (id)
+    )
+Hibernate: 
+    create table admin_otp_requests (
+        id bigint generated by default as identity,
+        attempts integer not null,
+        channel enum ('EMAIL','PHONE','WHATSAPP') not null,
+        created_at timestamp(6) with time zone not null,
+        delivery_status varchar(24),
+        expires_at timestamp(6) with time zone not null,
+        identifier varchar(255) not null,
+        locked_until timestamp(6) with time zone,
+        masked_destination varchar(255) not null,
+        normalized_identifier varchar(255) not null,
+        otp_hash varchar(128) not null,
+        purpose enum ('SIGNIN','SIGNUP') not null,
+        request_count integer not null,
+        resend_available_at timestamp(6) with time zone,
+        status enum ('EXPIRED','LOCKED','PENDING','VERIFIED') not null,
+        updated_at timestamp(6) with time zone not null,
+        user_id bigint,
+        verified_at timestamp(6) with time zone,
+        primary key (id)
+    )
+Hibernate: 
+    create table consumer_auth_sessions (
+        id bigint generated by default as identity,
+        access_token_hash varchar(128) not null,
+        created_at timestamp(6) with time zone not null,
+        expires_at timestamp(6) with time zone not null,
+        refresh_token_hash varchar(128) not null,
+        revoked_at timestamp(6) with time zone,
+        updated_at timestamp(6) with time zone not null,
+        user_id bigint not null,
+        primary key (id)
+    )
+Hibernate: 
+    create table consumer_auth_users (
+        id bigint generated by default as identity,
+        created_at timestamp(6) with time zone not null,
+        display_name varchar(255),
+        email varchar(255),
+        email_verified_at timestamp(6) with time zone,
+        phone_number varchar(32),
+        phone_verified_at timestamp(6) with time zone,
+        public_id varchar(36) not null,
+        status enum ('ACTIVE','BLOCKED','PENDING') not null,
+        updated_at timestamp(6) with time zone not null,
+        primary key (id)
+    )
+Hibernate: 
+    create table consumer_otp_requests (
+        id bigint generated by default as identity,
+        attempts integer not null,
+        channel enum ('EMAIL','PHONE','WHATSAPP') not null,
+        created_at timestamp(6) with time zone not null,
+        delivery_status varchar(24),
+        expires_at timestamp(6) with time zone not null,
+        identifier varchar(255) not null,
+        locked_until timestamp(6) with time zone,
+        masked_destination varchar(255) not null,
+        normalized_identifier varchar(255) not null,
+        otp_hash varchar(128) not null,
+        purpose enum ('SIGNIN','SIGNUP') not null,
+        request_count integer not null,
+        resend_available_at timestamp(6) with time zone,
+        status enum ('EXPIRED','LOCKED','PENDING','VERIFIED') not null,
+        updated_at timestamp(6) with time zone not null,
+        user_id bigint,
+        verified_at timestamp(6) with time zone,
+        primary key (id)
+    )
+Hibernate: 
+    create table store_profiles (
+        id bigint generated by default as identity,
+        audience enum ('ADMIN','CONSUMER') not null,
+        business_name varchar(255) not null,
+        category_key varchar(64) not null,
+        category_label varchar(128) not null,
+        country_code varchar(8) not null,
+        country_name varchar(128) not null,
+        created_at timestamp(6) with time zone not null,
+        currency_code varchar(8) not null,
+        custom_category varchar(255),
+        org_id varchar(36) not null,
+        owner_public_user_id varchar(36) not null,
+        owner_user_id bigint not null,
+        public_user_id varchar(36) not null,
+        store_id varchar(36) not null,
+        updated_at timestamp(6) with time zone not null,
+        primary key (id)
+    )
+Hibernate: 
+    alter table if exists admin_auth_users 
+       drop constraint if exists UK7x84p0vh59bu0ocuma6fb6jg0
+Hibernate: 
+    alter table if exists admin_auth_users 
+       add constraint UK7x84p0vh59bu0ocuma6fb6jg0 unique (public_id)
+Hibernate: 
+    alter table if exists consumer_auth_users 
+       drop constraint if exists UK5xlr51dv8f9eh7vqdxg5v7bl
+Hibernate: 
+    alter table if exists consumer_auth_users 
+       add constraint UK5xlr51dv8f9eh7vqdxg5v7bl unique (public_id)
+Hibernate: 
+    alter table if exists store_profiles 
+       drop constraint if exists UK49o4893moduk21ddc1lmtpiq1
+Hibernate: 
+    alter table if exists store_profiles 
+       add constraint UK49o4893moduk21ddc1lmtpiq1 unique (org_id)
+Hibernate: 
+    alter table if exists store_profiles 
+       drop constraint if exists UK1xuk8vftok3injie12ymhtijo
+Hibernate: 
+    alter table if exists store_profiles 
+       add constraint UK1xuk8vftok3injie12ymhtijo unique (owner_public_user_id)
+Hibernate: 
+    alter table if exists store_profiles 
+       drop constraint if exists UKbe5611ha62h40l0y2q4x1scg6
+Hibernate: 
+    alter table if exists store_profiles 
+       add constraint UKbe5611ha62h40l0y2q4x1scg6 unique (public_user_id)
+Hibernate: 
+    alter table if exists store_profiles 
+       drop constraint if exists UK15r64px3vvviv5hkqfs52pk1v
+Hibernate: 
+    alter table if exists store_profiles 
+       add constraint UK15r64px3vvviv5hkqfs52pk1v unique (store_id)
+2026-06-30T09:00:13.088+05:30  INFO 18692 --- [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-06-30T09:00:13.649+05:30  WARN 18692 --- [           main] JpaBaseConfiguration$JpaWebConfiguration : spring.jpa.open-in-view is enabled by default. Therefore, database queries may be performed during view rendering. Explicitly configure spring.jpa.open-in-view to disable this warning
+2026-06-30T09:00:13.846+05:30  INFO 18692 --- [           main] o.s.b.a.h2.H2ConsoleAutoConfiguration    : H2 console available at '/h2-console'. Database available at 'jdbc:h2:mem:ecommerce_db'
+2026-06-30T09:00:13.899+05:30  WARN 18692 --- [           main] ConfigServletWebServerApplicationContext : Exception encountered during context initialization - cancelling refresh attempt: org.springframework.context.ApplicationContextException: Failed to start bean 'webServerStartStop'
+2026-06-30T09:00:13.900+05:30  INFO 18692 --- [           main] j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-06-30T09:00:13.904+05:30  INFO 18692 --- [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown initiated...
+2026-06-30T09:00:13.905+05:30  INFO 18692 --- [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown completed.
+2026-06-30T09:00:13.915+05:30  INFO 18692 --- [           main] .s.b.a.l.ConditionEvaluationReportLogger : 
+
+Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
+2026-06-30T09:00:13.929+05:30 ERROR 18692 --- [           main] o.s.b.d.LoggingFailureAnalysisReporter   : 
+
+***************************
+APPLICATION FAILED TO START
+***************************
+
+Description:
+
+Web server failed to start. Port 8080 was already in use.
+
+Action:
+
+Identify and stop the process that's listening on port 8080 or configure this application to listen on another port.
+
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  9.924 s
+[INFO] Finished at: 2026-06-30T09:00:14+05:30
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.springframework.boot:spring-boot-maven-plugin:3.4.13:run (default-cli) on project ecommerce-backend: Process terminated with exit code: 1 -> [Help 1]
+org.apache.maven.lifecycle.LifecycleExecutionException: Failed to execute goal org.springframework.boot:spring-boot-maven-plugin:3.4.13:run (default-cli) on project ecommerce-backend: Process terminated with exit code: 1
+    at org.apache.maven.lifecycle.internal.MojoExecutor.doExecute2 (MojoExecutor.java:333)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.doExecute (MojoExecutor.java:316)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.execute (MojoExecutor.java:212)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.execute (MojoExecutor.java:174)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.access$000 (MojoExecutor.java:75)
+    at org.apache.maven.lifecycle.internal.MojoExecutor$1.run (MojoExecutor.java:162)
+    at org.apache.maven.plugin.DefaultMojosExecutionStrategy.execute (DefaultMojosExecutionStrategy.java:39)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.execute (MojoExecutor.java:159)
+    at org.apache.maven.lifecycle.internal.LifecycleModuleBuilder.buildProject (LifecycleModuleBuilder.java:105)
+    at org.apache.maven.lifecycle.internal.LifecycleModuleBuilder.buildProject (LifecycleModuleBuilder.java:73)
+    at org.apache.maven.lifecycle.internal.builder.singlethreaded.SingleThreadedBuilder.build (SingleThreadedBuilder.java:53)
+    at org.apache.maven.lifecycle.internal.LifecycleStarter.execute (LifecycleStarter.java:118)
+    at org.apache.maven.DefaultMaven.doExecute (DefaultMaven.java:261)
+    at org.apache.maven.DefaultMaven.doExecute (DefaultMaven.java:173)
+    at org.apache.maven.DefaultMaven.execute (DefaultMaven.java:101)
+    at org.apache.maven.cli.MavenCli.execute (MavenCli.java:919)
+    at org.apache.maven.cli.MavenCli.doMain (MavenCli.java:285)
+    at org.apache.maven.cli.MavenCli.main (MavenCli.java:207)
+    at jdk.internal.reflect.NativeMethodAccessorImpl.invoke0 (Native Method)
+    at jdk.internal.reflect.NativeMethodAccessorImpl.invoke (NativeMethodAccessorImpl.java:77)
+    at jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke (DelegatingMethodAccessorImpl.java:43)
+    at java.lang.reflect.Method.invoke (Method.java:569)
+    at org.codehaus.plexus.classworlds.launcher.Launcher.launchEnhanced (Launcher.java:255)
+    at org.codehaus.plexus.classworlds.launcher.Launcher.launch (Launcher.java:201)
+    at org.codehaus.plexus.classworlds.launcher.Launcher.mainWithExitCode (Launcher.java:362)
+    at org.codehaus.plexus.classworlds.launcher.Launcher.main (Launcher.java:314)
+Caused by: org.apache.maven.plugin.MojoExecutionException: Process terminated with exit code: 1
+    at org.springframework.boot.maven.JavaProcessExecutor.run (JavaProcessExecutor.java:74)
+    at org.springframework.boot.maven.RunMojo.run (RunMojo.java:76)
+    at org.springframework.boot.maven.AbstractRunMojo.run (AbstractRunMojo.java:253)
+    at org.springframework.boot.maven.AbstractRunMojo.execute (AbstractRunMojo.java:216)
+    at org.apache.maven.plugin.DefaultBuildPluginManager.executeMojo (DefaultBuildPluginManager.java:126)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.doExecute2 (MojoExecutor.java:328)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.doExecute (MojoExecutor.java:316)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.execute (MojoExecutor.java:212)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.execute (MojoExecutor.java:174)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.access$000 (MojoExecutor.java:75)
+    at org.apache.maven.lifecycle.internal.MojoExecutor$1.run (MojoExecutor.java:162)
+    at org.apache.maven.plugin.DefaultMojosExecutionStrategy.execute (DefaultMojosExecutionStrategy.java:39)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.execute (MojoExecutor.java:159)
+    at org.apache.maven.lifecycle.internal.LifecycleModuleBuilder.buildProject (LifecycleModuleBuilder.java:105)
+    at org.apache.maven.lifecycle.internal.LifecycleModuleBuilder.buildProject (LifecycleModuleBuilder.java:73)
+    at org.apache.maven.lifecycle.internal.builder.singlethreaded.SingleThreadedBuilder.build (SingleThreadedBuilder.java:53)
+    at org.apache.maven.lifecycle.internal.LifecycleStarter.execute (LifecycleStarter.java:118)
+    at org.apache.maven.DefaultMaven.doExecute (DefaultMaven.java:261)
+    at org.apache.maven.DefaultMaven.doExecute (DefaultMaven.java:173)
+    at org.apache.maven.DefaultMaven.execute (DefaultMaven.java:101)
+    at org.apache.maven.cli.MavenCli.execute (MavenCli.java:919)
+    at org.apache.maven.cli.MavenCli.doMain (MavenCli.java:285)
+    at org.apache.maven.cli.MavenCli.main (MavenCli.java:207)
+    at jdk.internal.reflect.NativeMethodAccessorImpl.invoke0 (Native Method)
+    at jdk.internal.reflect.NativeMethodAccessorImpl.invoke (NativeMethodAccessorImpl.java:77)
+    at jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke (DelegatingMethodAccessorImpl.java:43)
+    at java.lang.reflect.Method.invoke (Method.java:569)
+    at org.codehaus.plexus.classworlds.launcher.Launcher.launchEnhanced (Launcher.java:255)
+    at org.codehaus.plexus.classworlds.launcher.Launcher.launch (Launcher.java:201)
+    at org.codehaus.plexus.classworlds.launcher.Launcher.mainWithExitCode (Launcher.java:362)
+    at org.codehaus.plexus.classworlds.launcher.Launcher.main (Launcher.java:314)
+[ERROR] 
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoExecutionException
