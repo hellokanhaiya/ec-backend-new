@@ -47,6 +47,15 @@ public class StoreProfile {
     @Column(name = "business_name", nullable = false, length = 255)
     private String businessName;
 
+    @Column(name = "legal_name", length = 255)
+    private String legalName;
+
+    @Column(name = "admin_email", length = 255)
+    private String adminEmail;
+
+    @Column(name = "admin_phone", length = 64)
+    private String adminPhone;
+
     @Column(name = "category_key", nullable = false, length = 64)
     private String categoryKey;
 
@@ -64,6 +73,39 @@ public class StoreProfile {
 
     @Column(name = "country_name", nullable = false, length = 128)
     private String countryName;
+
+    @Column(name = "tax_number", length = 64)
+    private String taxNumber;
+
+    @Column(name = "license_key", length = 128)
+    private String licenseKey;
+
+    @Column(name = "address_line1", length = 255)
+    private String addressLine1;
+
+    @Column(name = "address_line2", length = 255)
+    private String addressLine2;
+
+    @Column(name = "city", length = 128)
+    private String city;
+
+    @Column(name = "state", length = 128)
+    private String state;
+
+    @Column(name = "postal_code", length = 32)
+    private String postalCode;
+
+    @Column(name = "time_zone", length = 64)
+    private String timeZone;
+
+    @Column(name = "date_format", length = 32)
+    private String dateFormat;
+
+    @Column(name = "business_email", length = 255)
+    private String businessEmail;
+
+    @Column(name = "business_phone", length = 64)
+    private String businessPhone;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

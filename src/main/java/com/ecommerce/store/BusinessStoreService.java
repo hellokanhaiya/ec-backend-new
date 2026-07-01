@@ -71,13 +71,28 @@ public class BusinessStoreService {
         profile.setOwnerUserId(ownerUserId);
         profile.setOwnerPublicUserId(ownerPublicUserId);
         profile.setAudience(audience);
-        profile.setBusinessName(request.businessName().trim());
-        profile.setCategoryKey(request.categoryKey().trim().toUpperCase(Locale.ROOT));
+        profile.setBusinessName(normalizeOptional(request.businessName()));
+        profile.setLegalName(normalizeOptional(request.legalName()));
+        profile.setAdminEmail(normalizeOptional(request.adminEmail()));
+        profile.setAdminPhone(normalizeOptional(request.adminPhone()));
+        profile.setCategoryKey(request.categoryKey().trim());
         profile.setCategoryLabel(request.categoryLabel().trim());
         profile.setCustomCategory(normalizeOptional(request.customCategory()));
         profile.setCurrencyCode(request.currencyCode().trim().toUpperCase(Locale.ROOT));
         profile.setCountryCode(request.countryCode().trim().toUpperCase(Locale.ROOT));
         profile.setCountryName(request.countryName().trim());
+
+        profile.setTaxNumber(normalizeOptional(request.taxNumber()));
+        profile.setLicenseKey(normalizeOptional(request.licenseKey()));
+        profile.setAddressLine1(normalizeOptional(request.addressLine1()));
+        profile.setAddressLine2(normalizeOptional(request.addressLine2()));
+        profile.setCity(normalizeOptional(request.city()));
+        profile.setState(normalizeOptional(request.state()));
+        profile.setPostalCode(normalizeOptional(request.postalCode()));
+        profile.setTimeZone(normalizeOptional(request.timeZone()));
+        profile.setDateFormat(normalizeOptional(request.dateFormat()));
+        profile.setBusinessEmail(normalizeOptional(request.businessEmail()));
+        profile.setBusinessPhone(normalizeOptional(request.businessPhone()));
         if (creating) {
             profile.setPublicUserId(ownerPublicUserId);
             profile.setOrgId(UUID.randomUUID().toString());
@@ -150,12 +165,26 @@ public class BusinessStoreService {
                 profile.getOrgId(),
                 profile.getStoreId(),
                 profile.getBusinessName(),
+                profile.getLegalName(),
+                profile.getAdminEmail(),
+                profile.getAdminPhone(),
                 profile.getCategoryKey(),
                 profile.getCategoryLabel(),
                 profile.getCustomCategory(),
                 profile.getCurrencyCode(),
                 profile.getCountryCode(),
                 profile.getCountryName(),
+                profile.getTaxNumber(),
+                profile.getLicenseKey(),
+                profile.getAddressLine1(),
+                profile.getAddressLine2(),
+                profile.getCity(),
+                profile.getState(),
+                profile.getPostalCode(),
+                profile.getTimeZone(),
+                profile.getDateFormat(),
+                profile.getBusinessEmail(),
+                profile.getBusinessPhone(),
                 profile.getAudience().name());
     }
 

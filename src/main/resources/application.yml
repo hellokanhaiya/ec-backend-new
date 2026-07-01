@@ -38,6 +38,14 @@ spring:
       enabled: true
 
 app:
+  # DEV/TEST ONLY authentication bypass. When enabled, `email` signs in with the
+  # fixed `code` and NO OTP is generated or emailed. MUST stay false (unset) in
+  # any shared/staging/production environment. Enable locally via .env:
+  #   APP_TEST_AUTH_ENABLED=true
+  test-auth:
+    enabled: ${APP_TEST_AUTH_ENABLED:false}
+    email: ${APP_TEST_AUTH_EMAIL:kanha12345@gmail.com}
+    code: ${APP_TEST_AUTH_CODE:123456}
   mail:
     from: ${APP_MAIL_FROM:no-reply@ecommerce.local}
   geo:

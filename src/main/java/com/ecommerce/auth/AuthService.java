@@ -15,6 +15,7 @@ import com.ecommerce.auth.repository.AdminOtpRequestRepository;
 import com.ecommerce.auth.repository.ConsumerAuthSessionRepository;
 import com.ecommerce.auth.repository.ConsumerAuthUserRepository;
 import com.ecommerce.auth.repository.ConsumerOtpRequestRepository;
+import com.ecommerce.config.TestAuthProperties;
 import com.ecommerce.store.StoreProfileRepository;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -49,6 +50,7 @@ public class AuthService {
     private final ConsumerAuthSessionRepository consumerAuthSessionRepository;
     private final OtpDeliveryService otpDeliveryService;
     private final StoreProfileRepository storeProfileRepository;
+    private final TestAuthProperties testAuthProperties;
 
     public AuthService(
             AdminAuthUserRepository adminAuthUserRepository,
@@ -58,7 +60,8 @@ public class AuthService {
             AdminAuthSessionRepository adminAuthSessionRepository,
             ConsumerAuthSessionRepository consumerAuthSessionRepository,
             OtpDeliveryService otpDeliveryService,
-            StoreProfileRepository storeProfileRepository) {
+            StoreProfileRepository storeProfileRepository,
+            TestAuthProperties testAuthProperties) {
         this.adminAuthUserRepository = adminAuthUserRepository;
         this.consumerAuthUserRepository = consumerAuthUserRepository;
         this.adminOtpRequestRepository = adminOtpRequestRepository;
@@ -67,6 +70,7 @@ public class AuthService {
         this.consumerAuthSessionRepository = consumerAuthSessionRepository;
         this.otpDeliveryService = otpDeliveryService;
         this.storeProfileRepository = storeProfileRepository;
+        this.testAuthProperties = testAuthProperties;
     }
 
     public AuthLookupData lookup(AuthAudience audience, AuthLookupRequest request) {
@@ -115,11 +119,15 @@ public class AuthService {
         String identifier = payload.identifier().trim();
         Optional<? extends AbstractAuthUser> existingUser = findUser(audience, channel, normalizedIdentifier);
 
-        if (purpose == AuthPurpose.SIGNUP && existingUser.isPresent() && existingUser.get().getStatus() == AuthUserStatus.ACTIVE) {
+        // DEV/TEST ONLY: the configured test account skips OTP generation/delivery
+        // and accepts a fixed code. Guarded by app.test-auth.enabled (default false).
+        boolean testBypass = channel == AuthChannel.EMAIL && testAuthProperties.matchesEmail(normalizedIdentifier);
+
+        if (!testBypass && purpose == AuthPurpose.SIGNUP && existingUser.isPresent() && existingUser.get().getStatus() == AuthUserStatus.ACTIVE) {
             throw new ResponseStatusException(CONFLICT, "An account already exists for this identifier. Please sign in.");
         }
 
-        if (purpose == AuthPurpose.SIGNIN && existingUser.isEmpty()) {
+        if (!testBypass && purpose == AuthPurpose.SIGNIN && existingUser.isEmpty()) {
             throw new ResponseStatusException(NOT_FOUND, "No account found for this identifier. Please sign up first.");
         }
 
@@ -133,7 +141,7 @@ public class AuthService {
 
         Optional<? extends AbstractOtpRequest> latestRequest = resolveLatestOtpRequest(audience, channel, normalizedIdentifier, purpose);
         Instant now = Instant.now();
-        if (latestRequest.isPresent()) {
+        if (latestRequest.isPresent() && !testBypass) {
             AbstractOtpRequest existingRequest = latestRequest.get();
             if (isLockActive(existingRequest, now)) {
                 throw new ResponseStatusException(TOO_MANY_REQUESTS, lockMessage(existingRequest, now));
@@ -160,11 +168,15 @@ public class AuthService {
                 .orElse(0) + 1;
         otpRequest.setRequestCount(requestCount);
         otpRequest.setResendAvailableAt(now.plusSeconds(AuthSupport.resendDelaySeconds(requestCount)));
-        String otpCode = AuthSupport.generateOtp();
+        String otpCode = testBypass ? testAuthProperties.getCode() : AuthSupport.generateOtp();
         otpRequest.setOtpHash(AuthSupport.hashOtp(String.valueOf(otpRequest.getId()), otpCode));
-        otpRequest.setDeliveryStatus("SENT");
+        otpRequest.setDeliveryStatus(testBypass ? "TEST_BYPASS" : "SENT");
         saveOtpRequest(audience, otpRequest);
-        deliverOtp(channel, normalizedIdentifier, otpCode);
+        if (testBypass) {
+            LOGGER.warn("TEST-AUTH bypass active for {} — OTP delivery skipped, fixed code accepted", normalizedIdentifier);
+        } else {
+            deliverOtp(channel, normalizedIdentifier, otpCode);
+        }
 
         return new OtpRequestData(
                 otpRequest.getId(),
