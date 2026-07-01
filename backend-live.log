@@ -219,3 +219,507 @@ Hibernate:
 2026-06-30T09:18:43.526+05:30  INFO 21488 --- [           main] o.s.b.a.h2.H2ConsoleAutoConfiguration    : H2 console available at '/h2-console'. Database available at 'jdbc:h2:mem:ecommerce_db'
 2026-06-30T09:18:43.590+05:30  INFO 21488 --- [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port 8080 (http) with context path '/'
 2026-06-30T09:18:43.597+05:30  INFO 21488 --- [           main] com.ecommerce.EcommerceApplication       : Started EcommerceApplication in 3.832 seconds (process running for 4.076)
+2026-06-30T09:27:07.347+05:30  INFO 21488 --- [nio-8080-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-06-30T09:27:07.348+05:30  INFO 21488 --- [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2026-06-30T09:27:07.349+05:30  INFO 21488 --- [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 1 ms
+Hibernate: 
+    select
+        aau1_0.id,
+        aau1_0.created_at,
+        aau1_0.display_name,
+        aau1_0.email,
+        aau1_0.email_verified_at,
+        aau1_0.phone_number,
+        aau1_0.phone_verified_at,
+        aau1_0.public_id,
+        aau1_0.status,
+        aau1_0.updated_at 
+    from
+        admin_auth_users aau1_0 
+    where
+        upper(aau1_0.email)=upper(?)
+Hibernate: 
+    select
+        aor1_0.id,
+        aor1_0.attempts,
+        aor1_0.channel,
+        aor1_0.created_at,
+        aor1_0.delivery_status,
+        aor1_0.expires_at,
+        aor1_0.identifier,
+        aor1_0.locked_until,
+        aor1_0.masked_destination,
+        aor1_0.normalized_identifier,
+        aor1_0.otp_hash,
+        aor1_0.purpose,
+        aor1_0.request_count,
+        aor1_0.resend_available_at,
+        aor1_0.status,
+        aor1_0.updated_at,
+        aor1_0.user_id,
+        aor1_0.verified_at 
+    from
+        admin_otp_requests aor1_0 
+    where
+        aor1_0.normalized_identifier=? 
+        and aor1_0.purpose=? 
+        and aor1_0.channel=? 
+    order by
+        aor1_0.created_at desc 
+    fetch
+        first ? rows only
+Hibernate: 
+    select
+        aor1_0.id,
+        aor1_0.attempts,
+        aor1_0.channel,
+        aor1_0.created_at,
+        aor1_0.delivery_status,
+        aor1_0.expires_at,
+        aor1_0.identifier,
+        aor1_0.locked_until,
+        aor1_0.masked_destination,
+        aor1_0.normalized_identifier,
+        aor1_0.otp_hash,
+        aor1_0.purpose,
+        aor1_0.request_count,
+        aor1_0.resend_available_at,
+        aor1_0.status,
+        aor1_0.updated_at,
+        aor1_0.user_id,
+        aor1_0.verified_at 
+    from
+        admin_otp_requests aor1_0 
+    where
+        aor1_0.normalized_identifier=? 
+        and aor1_0.purpose=? 
+        and aor1_0.channel=? 
+    order by
+        aor1_0.created_at desc 
+    fetch
+        first ? rows only
+Hibernate: 
+    select
+        aor1_0.id,
+        aor1_0.attempts,
+        aor1_0.channel,
+        aor1_0.created_at,
+        aor1_0.delivery_status,
+        aor1_0.expires_at,
+        aor1_0.identifier,
+        aor1_0.locked_until,
+        aor1_0.masked_destination,
+        aor1_0.normalized_identifier,
+        aor1_0.otp_hash,
+        aor1_0.purpose,
+        aor1_0.request_count,
+        aor1_0.resend_available_at,
+        aor1_0.status,
+        aor1_0.updated_at,
+        aor1_0.user_id,
+        aor1_0.verified_at 
+    from
+        admin_otp_requests aor1_0 
+    where
+        aor1_0.normalized_identifier=? 
+        and aor1_0.purpose=? 
+        and aor1_0.channel=? 
+    order by
+        aor1_0.created_at desc 
+    fetch
+        first ? rows only
+Hibernate: 
+    select
+        aau1_0.id,
+        aau1_0.created_at,
+        aau1_0.display_name,
+        aau1_0.email,
+        aau1_0.email_verified_at,
+        aau1_0.phone_number,
+        aau1_0.phone_verified_at,
+        aau1_0.public_id,
+        aau1_0.status,
+        aau1_0.updated_at 
+    from
+        admin_auth_users aau1_0 
+    where
+        upper(aau1_0.email)=upper(?)
+Hibernate: 
+    select
+        aor1_0.id,
+        aor1_0.attempts,
+        aor1_0.channel,
+        aor1_0.created_at,
+        aor1_0.delivery_status,
+        aor1_0.expires_at,
+        aor1_0.identifier,
+        aor1_0.locked_until,
+        aor1_0.masked_destination,
+        aor1_0.normalized_identifier,
+        aor1_0.otp_hash,
+        aor1_0.purpose,
+        aor1_0.request_count,
+        aor1_0.resend_available_at,
+        aor1_0.status,
+        aor1_0.updated_at,
+        aor1_0.user_id,
+        aor1_0.verified_at 
+    from
+        admin_otp_requests aor1_0 
+    where
+        aor1_0.normalized_identifier=? 
+        and aor1_0.purpose=? 
+        and aor1_0.channel=? 
+    order by
+        aor1_0.created_at desc 
+    fetch
+        first ? rows only
+Hibernate: 
+    select
+        aor1_0.id,
+        aor1_0.attempts,
+        aor1_0.channel,
+        aor1_0.created_at,
+        aor1_0.delivery_status,
+        aor1_0.expires_at,
+        aor1_0.identifier,
+        aor1_0.locked_until,
+        aor1_0.masked_destination,
+        aor1_0.normalized_identifier,
+        aor1_0.otp_hash,
+        aor1_0.purpose,
+        aor1_0.request_count,
+        aor1_0.resend_available_at,
+        aor1_0.status,
+        aor1_0.updated_at,
+        aor1_0.user_id,
+        aor1_0.verified_at 
+    from
+        admin_otp_requests aor1_0 
+    where
+        aor1_0.normalized_identifier=? 
+        and aor1_0.purpose=? 
+        and aor1_0.channel=? 
+    order by
+        aor1_0.created_at desc 
+    fetch
+        first ? rows only
+Hibernate: 
+    select
+        aor1_0.id,
+        aor1_0.attempts,
+        aor1_0.channel,
+        aor1_0.created_at,
+        aor1_0.delivery_status,
+        aor1_0.expires_at,
+        aor1_0.identifier,
+        aor1_0.locked_until,
+        aor1_0.masked_destination,
+        aor1_0.normalized_identifier,
+        aor1_0.otp_hash,
+        aor1_0.purpose,
+        aor1_0.request_count,
+        aor1_0.resend_available_at,
+        aor1_0.status,
+        aor1_0.updated_at,
+        aor1_0.user_id,
+        aor1_0.verified_at 
+    from
+        admin_otp_requests aor1_0 
+    where
+        aor1_0.normalized_identifier=? 
+        and aor1_0.purpose=? 
+        and aor1_0.channel=? 
+    order by
+        aor1_0.created_at desc 
+    fetch
+        first ? rows only
+Hibernate: 
+    select
+        aau1_0.id,
+        aau1_0.created_at,
+        aau1_0.display_name,
+        aau1_0.email,
+        aau1_0.email_verified_at,
+        aau1_0.phone_number,
+        aau1_0.phone_verified_at,
+        aau1_0.public_id,
+        aau1_0.status,
+        aau1_0.updated_at 
+    from
+        admin_auth_users aau1_0 
+    where
+        upper(aau1_0.email)=upper(?)
+Hibernate: 
+    insert 
+    into
+        admin_auth_users
+        (created_at, display_name, email, email_verified_at, phone_number, phone_verified_at, public_id, status, updated_at, id) 
+    values
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, default)
+Hibernate: 
+    select
+        aor1_0.id,
+        aor1_0.attempts,
+        aor1_0.channel,
+        aor1_0.created_at,
+        aor1_0.delivery_status,
+        aor1_0.expires_at,
+        aor1_0.identifier,
+        aor1_0.locked_until,
+        aor1_0.masked_destination,
+        aor1_0.normalized_identifier,
+        aor1_0.otp_hash,
+        aor1_0.purpose,
+        aor1_0.request_count,
+        aor1_0.resend_available_at,
+        aor1_0.status,
+        aor1_0.updated_at,
+        aor1_0.user_id,
+        aor1_0.verified_at 
+    from
+        admin_otp_requests aor1_0 
+    where
+        aor1_0.normalized_identifier=? 
+        and aor1_0.purpose=? 
+        and aor1_0.channel=? 
+    order by
+        aor1_0.created_at desc 
+    fetch
+        first ? rows only
+Hibernate: 
+    insert 
+    into
+        admin_otp_requests
+        (attempts, channel, created_at, delivery_status, expires_at, identifier, locked_until, masked_destination, normalized_identifier, otp_hash, purpose, request_count, resend_available_at, status, updated_at, user_id, verified_at, id) 
+    values
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, default)
+Hibernate: 
+    update
+        admin_otp_requests 
+    set
+        attempts=?,
+        channel=?,
+        delivery_status=?,
+        expires_at=?,
+        identifier=?,
+        locked_until=?,
+        masked_destination=?,
+        normalized_identifier=?,
+        otp_hash=?,
+        purpose=?,
+        request_count=?,
+        resend_available_at=?,
+        status=?,
+        updated_at=?,
+        user_id=?,
+        verified_at=? 
+    where
+        id=?
+2026-06-30T09:27:29.548+05:30  INFO 21488 --- [         task-1] com.ecommerce.auth.OtpDeliveryService    : Email OTP sent to kanha904438@gmail.com
+Hibernate: 
+    select
+        aor1_0.id,
+        aor1_0.attempts,
+        aor1_0.channel,
+        aor1_0.created_at,
+        aor1_0.delivery_status,
+        aor1_0.expires_at,
+        aor1_0.identifier,
+        aor1_0.locked_until,
+        aor1_0.masked_destination,
+        aor1_0.normalized_identifier,
+        aor1_0.otp_hash,
+        aor1_0.purpose,
+        aor1_0.request_count,
+        aor1_0.resend_available_at,
+        aor1_0.status,
+        aor1_0.updated_at,
+        aor1_0.user_id,
+        aor1_0.verified_at 
+    from
+        admin_otp_requests aor1_0 
+    where
+        aor1_0.id=?
+Hibernate: 
+    select
+        aau1_0.id,
+        aau1_0.created_at,
+        aau1_0.display_name,
+        aau1_0.email,
+        aau1_0.email_verified_at,
+        aau1_0.phone_number,
+        aau1_0.phone_verified_at,
+        aau1_0.public_id,
+        aau1_0.status,
+        aau1_0.updated_at 
+    from
+        admin_auth_users aau1_0 
+    where
+        aau1_0.id=?
+Hibernate: 
+    insert 
+    into
+        admin_auth_sessions
+        (access_token_hash, created_at, expires_at, refresh_token_hash, revoked_at, updated_at, user_id, id) 
+    values
+        (?, ?, ?, ?, ?, ?, ?, default)
+Hibernate: 
+    select
+        sp1_0.id,
+        sp1_0.audience,
+        sp1_0.business_name,
+        sp1_0.category_key,
+        sp1_0.category_label,
+        sp1_0.country_code,
+        sp1_0.country_name,
+        sp1_0.created_at,
+        sp1_0.currency_code,
+        sp1_0.custom_category,
+        sp1_0.org_id,
+        sp1_0.owner_public_user_id,
+        sp1_0.owner_user_id,
+        sp1_0.public_user_id,
+        sp1_0.store_id,
+        sp1_0.updated_at 
+    from
+        store_profiles sp1_0 
+    where
+        sp1_0.owner_public_user_id=?
+Hibernate: 
+    update
+        admin_otp_requests 
+    set
+        attempts=?,
+        channel=?,
+        delivery_status=?,
+        expires_at=?,
+        identifier=?,
+        locked_until=?,
+        masked_destination=?,
+        normalized_identifier=?,
+        otp_hash=?,
+        purpose=?,
+        request_count=?,
+        resend_available_at=?,
+        status=?,
+        updated_at=?,
+        user_id=?,
+        verified_at=? 
+    where
+        id=?
+Hibernate: 
+    update
+        admin_auth_users 
+    set
+        display_name=?,
+        email=?,
+        email_verified_at=?,
+        phone_number=?,
+        phone_verified_at=?,
+        status=?,
+        updated_at=? 
+    where
+        id=?
+Hibernate: 
+    select
+        aau1_0.id,
+        aau1_0.created_at,
+        aau1_0.display_name,
+        aau1_0.email,
+        aau1_0.email_verified_at,
+        aau1_0.phone_number,
+        aau1_0.phone_verified_at,
+        aau1_0.public_id,
+        aau1_0.status,
+        aau1_0.updated_at 
+    from
+        admin_auth_users aau1_0 
+    where
+        aau1_0.public_id=?
+Hibernate: 
+    select
+        sp1_0.id,
+        sp1_0.audience,
+        sp1_0.business_name,
+        sp1_0.category_key,
+        sp1_0.category_label,
+        sp1_0.country_code,
+        sp1_0.country_name,
+        sp1_0.created_at,
+        sp1_0.currency_code,
+        sp1_0.custom_category,
+        sp1_0.org_id,
+        sp1_0.owner_public_user_id,
+        sp1_0.owner_user_id,
+        sp1_0.public_user_id,
+        sp1_0.store_id,
+        sp1_0.updated_at 
+    from
+        store_profiles sp1_0 
+    where
+        sp1_0.owner_public_user_id=?
+Hibernate: 
+    insert 
+    into
+        store_profiles
+        (audience, business_name, category_key, category_label, country_code, country_name, created_at, currency_code, custom_category, org_id, owner_public_user_id, owner_user_id, public_user_id, store_id, updated_at, id) 
+    values
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, default)
+Hibernate: 
+    select
+        aas1_0.id,
+        aas1_0.access_token_hash,
+        aas1_0.created_at,
+        aas1_0.expires_at,
+        aas1_0.refresh_token_hash,
+        aas1_0.revoked_at,
+        aas1_0.updated_at,
+        aas1_0.user_id 
+    from
+        admin_auth_sessions aas1_0 
+    where
+        aas1_0.access_token_hash=? 
+        and aas1_0.revoked_at is null 
+    order by
+        aas1_0.updated_at desc 
+    fetch
+        first ? rows only
+Hibernate: 
+    select
+        aau1_0.id,
+        aau1_0.created_at,
+        aau1_0.display_name,
+        aau1_0.email,
+        aau1_0.email_verified_at,
+        aau1_0.phone_number,
+        aau1_0.phone_verified_at,
+        aau1_0.public_id,
+        aau1_0.status,
+        aau1_0.updated_at 
+    from
+        admin_auth_users aau1_0 
+    where
+        aau1_0.id=?
+Hibernate: 
+    select
+        sp1_0.id,
+        sp1_0.audience,
+        sp1_0.business_name,
+        sp1_0.category_key,
+        sp1_0.category_label,
+        sp1_0.country_code,
+        sp1_0.country_name,
+        sp1_0.created_at,
+        sp1_0.currency_code,
+        sp1_0.custom_category,
+        sp1_0.org_id,
+        sp1_0.owner_public_user_id,
+        sp1_0.owner_user_id,
+        sp1_0.public_user_id,
+        sp1_0.store_id,
+        sp1_0.updated_at 
+    from
+        store_profiles sp1_0 
+    where
+        sp1_0.owner_public_user_id=?

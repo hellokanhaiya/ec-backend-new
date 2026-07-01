@@ -32,6 +32,28 @@ final class AuthSupport {
         };
     }
 
+    static AuthChannel detectChannel(String identifier) {
+        if (identifier == null || identifier.isBlank()) {
+            return null;
+        }
+
+        String trimmed = identifier.trim();
+        if (trimmed.contains("@")) {
+            return isValidIdentifier(AuthChannel.EMAIL, trimmed) ? AuthChannel.EMAIL : null;
+        }
+
+        String normalizedPhone = normalizeIdentifier(AuthChannel.PHONE, trimmed);
+        return normalizedPhone.matches("\\d{8,15}") ? AuthChannel.PHONE : null;
+    }
+
+    static boolean supportsPhone(String countryCode) {
+        return countryCode != null && "IN".equalsIgnoreCase(countryCode.trim());
+    }
+
+    static boolean isEmailOnlyCountry(String countryCode) {
+        return !supportsPhone(countryCode);
+    }
+
     static String maskIdentifier(AuthChannel channel, String identifier) {
         String normalized = normalizeIdentifier(channel, identifier);
         return switch (channel) {

@@ -70,8 +70,9 @@ public class AuthService {
     }
 
     public AuthLookupData lookup(AuthAudience audience, AuthLookupRequest request) {
-        AuthChannel channel = parseChannel(request.channel());
-        String normalizedIdentifier = normalizeAndValidate(channel, request.identifier());
+        String countryCode = normalizeCountryCode(request.countryCode());
+        AuthChannel channel = resolveChannel(request.channel(), request.identifier(), countryCode);
+        String normalizedIdentifier = normalizeAndValidate(channel, request.identifier(), countryCode);
         Optional<? extends AbstractAuthUser> user = findUser(audience, channel, normalizedIdentifier);
 
         AuthAccountState state = user.map(this::resolveState).orElse(AuthAccountState.NEW);
@@ -98,7 +99,7 @@ public class AuthService {
                 state,
                 channel.name(),
                 AuthSupport.maskIdentifier(channel, normalizedIdentifier),
-                List.of("EMAIL", "PHONE", "WHATSAPP"),
+                allowedChannels(countryCode),
                 message,
                 lockedUntil == null || Instant.now().isAfter(lockedUntil),
                 attemptsLeft,
@@ -108,8 +109,9 @@ public class AuthService {
 
     public OtpRequestData requestOtp(AuthAudience audience, OtpRequestPayload payload) {
         AuthPurpose purpose = parsePurpose(payload.purpose());
-        AuthChannel channel = parseChannel(payload.channel());
-        String normalizedIdentifier = normalizeAndValidate(channel, payload.identifier());
+        String countryCode = normalizeCountryCode(payload.countryCode());
+        AuthChannel channel = resolveChannel(payload.channel(), payload.identifier(), countryCode);
+        String normalizedIdentifier = normalizeAndValidate(channel, payload.identifier(), countryCode);
         String identifier = payload.identifier().trim();
         Optional<? extends AbstractAuthUser> existingUser = findUser(audience, channel, normalizedIdentifier);
 
@@ -299,11 +301,33 @@ public class AuthService {
         }
     }
 
-    private String normalizeAndValidate(AuthChannel channel, String identifier) {
+    private AuthChannel resolveChannel(String requestedChannel, String identifier, String countryCode) {
+        AuthChannel resolved = requestedChannel == null || requestedChannel.isBlank()
+                ? AuthSupport.detectChannel(identifier)
+                : parseChannel(requestedChannel);
+
+        if (resolved == null) {
+            throw new ResponseStatusException(BAD_REQUEST, resolveIdentifierError(countryCode));
+        }
+
+        if (resolved == AuthChannel.PHONE && !AuthSupport.supportsPhone(countryCode)) {
+            throw new ResponseStatusException(BAD_REQUEST, "Mobile sign-in is available only in India. Please use email.");
+        }
+
+        return resolved;
+    }
+
+    private String normalizeAndValidate(AuthChannel channel, String identifier, String countryCode) {
         if (!AuthSupport.isValidIdentifier(channel, identifier)) {
-            throw new ResponseStatusException(BAD_REQUEST, "Invalid " + channel.name().toLowerCase() + " identifier");
+            throw new ResponseStatusException(BAD_REQUEST, resolveIdentifierError(countryCode));
         }
         return AuthSupport.normalizeIdentifier(channel, identifier);
+    }
+
+    private String resolveIdentifierError(String countryCode) {
+        return AuthSupport.supportsPhone(countryCode)
+                ? "Enter a valid email address or mobile number"
+                : "Enter a valid email address";
     }
 
     private AuthAccountState resolveState(Optional<? extends AbstractAuthUser> user) {
@@ -522,5 +546,13 @@ public class AuthService {
             return "unknown";
         }
         return provider.trim().toLowerCase();
+    }
+
+    private List<String> allowedChannels(String countryCode) {
+        return AuthSupport.supportsPhone(countryCode) ? List.of("EMAIL", "PHONE") : List.of("EMAIL");
+    }
+
+    private String normalizeCountryCode(String countryCode) {
+        return countryCode == null ? null : countryCode.trim();
     }
 }

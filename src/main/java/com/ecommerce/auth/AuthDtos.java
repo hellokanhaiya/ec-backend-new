@@ -5,7 +5,7 @@ import java.util.List;
 
 record ApiResponse<T>(boolean success, String message, T data) {}
 
-record AuthLookupRequest(String channel, String identifier) {}
+record AuthLookupRequest(String channel, String identifier, String countryCode) {}
 
 record AuthLookupData(
         String publicUserId,
@@ -25,7 +25,8 @@ record OtpRequestPayload(
         String purpose,
         String channel,
         String identifier,
-        String displayName) {}
+        String displayName,
+        String countryCode) {}
 
 record OtpRequestData(
         Long otpRequestId,

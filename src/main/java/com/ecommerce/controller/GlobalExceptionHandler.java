@@ -27,4 +27,13 @@ public class GlobalExceptionHandler {
         response.put("status", 500);
         return ResponseEntity.status(500).body(response);
     }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> handleException(Exception exception) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("success", false);
+        response.put("message", "Unhandled Exception: " + exception.getClass().getSimpleName() + ": " + exception.getMessage());
+        response.put("status", 500);
+        return ResponseEntity.status(500).body(response);
+    }
 }

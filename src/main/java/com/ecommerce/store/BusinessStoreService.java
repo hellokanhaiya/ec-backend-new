@@ -59,15 +59,17 @@ public class BusinessStoreService {
         return toData(storeProfile);
     }
 
-    public BusinessStoreData saveStoreProfile(AuthAudience audience, BusinessStoreRequest request) {
-        String publicUserId = validateRequest(request);
-        AbstractUserLookup userLookup = findUser(audience, publicUserId)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Linked account not found"));
+    public BusinessStoreData saveStoreProfile(
+            AuthAudience audience,
+            Long ownerUserId,
+            String ownerPublicUserId,
+            BusinessStoreRequest request) {
+        validateRequest(request, ownerPublicUserId);
 
-        StoreProfile profile = storeProfileRepository.findByOwnerPublicUserId(publicUserId).orElseGet(StoreProfile::new);
+        StoreProfile profile = storeProfileRepository.findByOwnerPublicUserId(ownerPublicUserId).orElseGet(StoreProfile::new);
         boolean creating = profile.getId() == null;
-        profile.setOwnerUserId(userLookup.userId());
-        profile.setOwnerPublicUserId(userLookup.publicUserId());
+        profile.setOwnerUserId(ownerUserId);
+        profile.setOwnerPublicUserId(ownerPublicUserId);
         profile.setAudience(audience);
         profile.setBusinessName(request.businessName().trim());
         profile.setCategoryKey(request.categoryKey().trim().toUpperCase(Locale.ROOT));
@@ -77,9 +79,9 @@ public class BusinessStoreService {
         profile.setCountryCode(request.countryCode().trim().toUpperCase(Locale.ROOT));
         profile.setCountryName(request.countryName().trim());
         if (creating) {
-            profile.setPublicUserId(publicUserId);
-            profile.setOrgId("TMP-ORG-" + UUID.randomUUID());
-            profile.setStoreId("TMP-STORE-" + UUID.randomUUID());
+            profile.setPublicUserId(ownerPublicUserId);
+            profile.setOrgId(UUID.randomUUID().toString());
+            profile.setStoreId(UUID.randomUUID().toString());
         }
 
         StoreProfile savedProfile = storeProfileRepository.save(profile);
@@ -101,12 +103,16 @@ public class BusinessStoreService {
                 .map(this::toData);
     }
 
-    private String validateRequest(BusinessStoreRequest request) {
+    private void validateRequest(BusinessStoreRequest request, String ownerPublicUserId) {
         if (request == null) {
             throw new ResponseStatusException(BAD_REQUEST, "Business profile is required");
         }
-        if (request.publicUserId() == null || request.publicUserId().isBlank()) {
+        if (ownerPublicUserId == null || ownerPublicUserId.isBlank()) {
             throw new ResponseStatusException(BAD_REQUEST, "publicUserId is required");
+        }
+        if (request.publicUserId() != null && !request.publicUserId().isBlank()
+                && !ownerPublicUserId.trim().equals(request.publicUserId().trim())) {
+            throw new ResponseStatusException(BAD_REQUEST, "publicUserId mismatch");
         }
         if (request.businessName() == null || request.businessName().isBlank()) {
             throw new ResponseStatusException(BAD_REQUEST, "businessName is required");
@@ -130,16 +136,6 @@ public class BusinessStoreService {
                 && (request.customCategory() == null || request.customCategory().isBlank())) {
             throw new ResponseStatusException(BAD_REQUEST, "customCategory is required when category is Other");
         }
-        return request.publicUserId().trim();
-    }
-
-    private Optional<AbstractUserLookup> findUser(AuthAudience audience, String publicUserId) {
-        return switch (audience) {
-            case ADMIN -> adminAuthUserRepository.findByPublicId(publicUserId)
-                    .map(user -> new AbstractUserLookup(user.getId(), user.getPublicId()));
-            case CONSUMER -> consumerAuthUserRepository.findByPublicId(publicUserId)
-                    .map(user -> new AbstractUserLookup(user.getId(), user.getPublicId()));
-        };
     }
 
     private void validateAudience(AuthAudience requested, AuthAudience actual) {
@@ -180,6 +176,4 @@ public class BusinessStoreService {
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
     }
-
-    private record AbstractUserLookup(Long userId, String publicUserId) {}
 }

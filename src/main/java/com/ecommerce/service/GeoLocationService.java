@@ -11,6 +11,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,7 +26,7 @@ public class GeoLocationService {
 
     private final ObjectMapper objectMapper;
 
-    @Value("${app.geo.lookup-base-url:https://ipapi.co}")
+    @Value("${app.geo.lookup-base-url:https://api.techniknews.net/ipgeo}")
     private String lookupBaseUrl;
 
     @Value("${app.geo.public-ip-url:https://api.ipify.org?format=json}")
@@ -70,54 +71,138 @@ public class GeoLocationService {
             return fallbackContext("unknown");
         }
 
-        try {
-            URI uri = URI.create(normalizeLookupBaseUrl() + "/" + ip + "/json/");
-            HttpRequest httpRequest = HttpRequest.newBuilder(uri)
-                    .timeout(Duration.ofSeconds(6))
-                    .GET()
-                    .header("Accept", "application/json")
-                    .build();
+        List<URI> candidateUris = buildCandidateUris(ip);
+        for (URI uri : candidateUris) {
+            try {
+                HttpRequest httpRequest = HttpRequest.newBuilder(uri)
+                        .timeout(Duration.ofSeconds(6))
+                        .GET()
+                        .header("Accept", "application/json")
+                        .build();
 
-            HttpResponse<String> response = HTTP_CLIENT.send(httpRequest, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                HttpResponse<String> response = HTTP_CLIENT.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    continue;
+                }
+
+                JsonNode payload = objectMapper.readTree(response.body());
+                if (isFailurePayload(payload)) {
+                    continue;
+                }
+
+                GeoContext resolved = mapGeoPayload(payload, ip);
+                if (resolved != null) {
+                    return resolved;
+                }
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
                 return fallbackContext(ip);
+            } catch (IOException ex) {
+                // try next provider
+            } catch (Exception ex) {
+                // try next provider
             }
-
-            JsonNode payload = objectMapper.readTree(response.body());
-            if (payload.path("error").asBoolean(false)) {
-                return fallbackContext(ip);
-            }
-
-            String countryCode = text(payload, "country_code", "XX");
-            boolean india = "IN".equalsIgnoreCase(countryCode);
-            String timezone = text(payload, "timezone", "UTC");
-
-            return new GeoContext(
-                    text(payload, "ip", ip),
-                    countryCode,
-                    text(payload, "country_name", "Unknown"),
-                    continentName(text(payload, "continent_code", "")),
-                    text(payload, "region", ""),
-                    text(payload, "city", ""),
-                    timezone,
-                    timezone,
-                    india,
-                    india ? GeoLoginMode.EMAIL_AND_PHONE : GeoLoginMode.EMAIL_ONLY,
-                    india ? List.of("EMAIL", "PHONE") : List.of("EMAIL"));
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            return fallbackContext(ip);
-        } catch (IOException ex) {
-            return fallbackContext(ip);
-        } catch (Exception ex) {
-            return fallbackContext(ip);
         }
+
+        return fallbackContext(ip);
+    }
+
+    private List<URI> buildCandidateUris(String ip) {
+        String baseUrl = normalizeLookupBaseUrl();
+        List<URI> uris = new ArrayList<>();
+        uris.add(buildProviderUri(baseUrl, ip));
+
+        String technikNews = "https://api.techniknews.net/ipgeo";
+        if (!baseUrl.equalsIgnoreCase(technikNews)) {
+            uris.add(buildProviderUri(technikNews, ip));
+        }
+
+        String geoJs = "https://get.geojs.io/v1/ip/geo";
+        if (!baseUrl.equalsIgnoreCase(geoJs)) {
+            uris.add(URI.create(geoJs + "/" + ip + ".json"));
+        }
+
+        String ipWhoIs = "https://ipwho.is";
+        if (!baseUrl.equalsIgnoreCase(ipWhoIs)) {
+            uris.add(buildProviderUri(ipWhoIs, ip));
+        }
+
+        return uris;
+    }
+
+    private URI buildProviderUri(String baseUrl, String ip) {
+        if (baseUrl.contains("get.geojs.io")) {
+            return URI.create(trimTrailingSlash(baseUrl) + "/" + ip + ".json");
+        }
+        return URI.create(trimTrailingSlash(baseUrl) + "/" + ip);
     }
 
     private String normalizeLookupBaseUrl() {
-        return lookupBaseUrl.endsWith("/") ? lookupBaseUrl.substring(0, lookupBaseUrl.length() - 1) : lookupBaseUrl;
+        String baseUrl = lookupBaseUrl == null || lookupBaseUrl.isBlank() ? "https://api.techniknews.net/ipgeo" : lookupBaseUrl.trim();
+        return trimTrailingSlash(baseUrl);
     }
 
+    private String trimTrailingSlash(String value) {
+        return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+    }
+
+    private boolean isFailurePayload(JsonNode payload) {
+        if (payload == null || payload.isMissingNode() || payload.isNull()) {
+            return true;
+        }
+
+        if (payload.path("error").asBoolean(false)) {
+            return true;
+        }
+
+        String status = text(payload, "status", "");
+        return "fail".equalsIgnoreCase(status);
+    }
+
+    private GeoContext mapGeoPayload(JsonNode payload, String fallbackIp) {
+        String countryCode = text(payload, "country_code", "countryCode", "XX");
+        String countryName = text(payload, "country_name", "country", "Unknown");
+        String continent = text(payload, "continent", continentName(text(payload, "continent_code", "continentCode", "")));
+        String region = text(payload, "region", "regionName", "");
+        String city = text(payload, "city", "cityName", "");
+        String timezone = resolveTimezone(payload);
+        boolean india = "IN".equalsIgnoreCase(countryCode);
+
+        return new GeoContext(
+                text(payload, "ip", fallbackIp),
+                countryCode,
+                countryName,
+                continent,
+                region,
+                city,
+                timezone,
+                timezone,
+                india,
+                india ? GeoLoginMode.EMAIL_AND_PHONE : GeoLoginMode.EMAIL_ONLY,
+                india ? List.of("EMAIL", "PHONE") : List.of("EMAIL"));
+    }
+
+    private String resolveTimezone(JsonNode payload) {
+        JsonNode timezoneNode = payload.path("timezone");
+        if (timezoneNode.isTextual()) {
+            String timezone = timezoneNode.asText("");
+            return timezone == null || timezone.isBlank() ? "UTC" : timezone;
+        }
+
+        if (timezoneNode.isObject()) {
+            String id = text(timezoneNode, "id", "");
+            if (id != null && !id.isBlank()) {
+                return id;
+            }
+
+            String utc = text(timezoneNode, "utc", "");
+            if (utc != null && !utc.isBlank()) {
+                return utc;
+            }
+        }
+
+        return "UTC";
+    }
     private String fetchPublicIp() {
         try {
             HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(publicIpUrl))
@@ -181,6 +266,20 @@ public class GeoLocationService {
     private String text(JsonNode payload, String field, String defaultValue) {
         String value = payload.path(field).asText("");
         return value == null || value.isBlank() ? defaultValue : value;
+    }
+
+    private String text(JsonNode payload, String primaryField, String secondaryField, String defaultValue) {
+        String primaryValue = payload.path(primaryField).asText("");
+        if (primaryValue != null && !primaryValue.isBlank()) {
+            return primaryValue;
+        }
+
+        if (secondaryField == null || secondaryField.isBlank()) {
+            return defaultValue;
+        }
+
+        String secondaryValue = payload.path(secondaryField).asText("");
+        return secondaryValue == null || secondaryValue.isBlank() ? defaultValue : secondaryValue;
     }
 
     private String continentName(String continentCode) {
