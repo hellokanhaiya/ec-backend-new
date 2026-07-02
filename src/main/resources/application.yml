@@ -53,5 +53,4 @@ app:
     lookup-base-url: ${GEO_LOOKUP_BASE_URL:https://ipwho.is}
     public-ip-url: ${GEO_PUBLIC_IP_URL:https://api.ipify.org?format=json}
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000}
-
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:*}

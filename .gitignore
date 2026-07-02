@@ -1,0 +1,14 @@
+# Build output
+target/
+
+
+# Logs
+*.log
+*.err.log
+
+# IDE / OS noise
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db

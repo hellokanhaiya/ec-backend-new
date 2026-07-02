@@ -2,6 +2,9 @@ package com.ecommerce.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.servlet.http.HttpServletRequest;
+import java.net.InetAddress;
+import java.net.URI;
+import java.net.UnknownHostException;
 import java.util.List;
 import java.util.Locale;
 import org.springframework.beans.factory.annotation.Value;
@@ -51,18 +54,59 @@ public class PublicGeoController {
     }
 
     private boolean isLocalRequest(HttpServletRequest request) {
-        return containsLocalhost(request.getHeader("Origin"))
-                || containsLocalhost(request.getHeader("Referer"))
-                || containsLocalhost(request.getServerName());
+        return isLocalHostValue(request.getHeader("Origin"))
+                || isLocalHostValue(request.getHeader("Referer"))
+                || isLocalHostValue(request.getServerName());
     }
 
-    private boolean containsLocalhost(String value) {
+    private boolean isLocalHostValue(String value) {
         if (value == null || value.isBlank()) {
             return false;
         }
 
-        String lowered = value.toLowerCase(Locale.ROOT);
-        return lowered.contains("localhost") || lowered.contains("127.0.0.1") || lowered.contains("::1");
+        String host = extractHost(value);
+        if (host == null || host.isBlank()) {
+            host = value;
+        }
+
+        String lowered = host.toLowerCase(Locale.ROOT);
+        if (lowered.contains("localhost") || lowered.contains("127.0.0.1") || lowered.contains("::1")) {
+            return true;
+        }
+        if (lowered.startsWith("192.168.") || lowered.startsWith("10.")) {
+            return true;
+        }
+        if (lowered.startsWith("172.")) {
+            String[] parts = lowered.split("\\.");
+            if (parts.length >= 2) {
+                try {
+                    int second = Integer.parseInt(parts[1]);
+                    return second >= 16 && second <= 31;
+                } catch (NumberFormatException ignored) {
+                    return false;
+                }
+            }
+        }
+        try {
+            InetAddress address = InetAddress.getByName(host);
+            return address.isAnyLocalAddress()
+                    || address.isLoopbackAddress()
+                    || address.isSiteLocalAddress();
+        } catch (UnknownHostException ignored) {
+            return false;
+        }
+    }
+
+    private String extractHost(String value) {
+        try {
+            if (value.contains("://")) {
+                URI uri = URI.create(value);
+                return uri.getHost();
+            }
+        } catch (IllegalArgumentException ignored) {
+            // fall back to raw value below
+        }
+        return value;
     }
 
     public record ApiResponse<T>(boolean success, String message, T data) {
