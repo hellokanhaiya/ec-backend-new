@@ -4,6 +4,9 @@ import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
+import com.ecommerce.media.ProductMediaStorageService;
+import com.ecommerce.media.StoreMedia;
+import com.ecommerce.media.StoreMediaRepository;
 import com.ecommerce.tag.StoreTagService;
 import com.ecommerce.tag.Tag;
 import java.math.BigDecimal;
@@ -11,6 +14,7 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -18,6 +22,8 @@ import java.util.TreeSet;
 import java.util.concurrent.ThreadLocalRandom;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
@@ -35,14 +41,20 @@ public class StoreProductService {
     private final ProductRepository productRepository;
     private final ProductRedirectRepository redirectRepository;
     private final StoreTagService storeTagService;
+    private final ProductMediaStorageService productMediaStorageService;
+    private final StoreMediaRepository storeMediaRepository;
 
     public StoreProductService(
             ProductRepository productRepository,
             ProductRedirectRepository redirectRepository,
-            StoreTagService storeTagService) {
+            StoreTagService storeTagService,
+            ProductMediaStorageService productMediaStorageService,
+            StoreMediaRepository storeMediaRepository) {
         this.productRepository = productRepository;
         this.redirectRepository = redirectRepository;
         this.storeTagService = storeTagService;
+        this.productMediaStorageService = productMediaStorageService;
+        this.storeMediaRepository = storeMediaRepository;
     }
 
     public ProductListData list(
@@ -113,6 +125,26 @@ public class StoreProductService {
         return new ProductOverviewData(total, active, draft, archived, lowStock, categories.size(), avgPrice);
     }
 
+    public ProductPickerListData picker(String storeId, String search, int page, int size) {
+        List<Product> all = productRepository.findByStoreIdOrderByCreatedAtDesc(storeId);
+        String query = search == null ? "" : search.trim().toLowerCase(Locale.ROOT);
+        List<Product> filtered = all.stream()
+                .filter(product -> product.getStatus() == ProductStatus.ACTIVE)
+                .filter(product -> query.isEmpty() || searchable(product).contains(query))
+                .toList();
+
+        long total = filtered.size();
+        List<Product> pageItems;
+        if (size <= 0) {
+            pageItems = filtered;
+        } else {
+            int from = Math.max(0, (Math.max(page, 1) - 1) * size);
+            int to = Math.min(filtered.size(), from + size);
+            pageItems = from >= filtered.size() ? List.of() : filtered.subList(from, to);
+        }
+        return new ProductPickerListData(pageItems.stream().map(this::toPicker).toList(), total, Math.max(page, 1), size);
+    }
+
     public ProductData get(String storeId, String publicProductId) {
         return toData(require(storeId, publicProductId));
     }
@@ -143,14 +175,16 @@ public class StoreProductService {
         return toData(saved);
     }
 
-    public ProductData update(String storeId, String publicProductId, ProductRequest request) {
+    public ProductData update(String storeId, String orgId, String publicProductId, ProductRequest request) {
         if (request == null) {
             throw new ResponseStatusException(BAD_REQUEST, "Request body is required");
         }
         Product product = require(storeId, publicProductId);
+        Set<String> previousImages = imageUrls(product);
         String oldSlug = product.getSlug();
         applyRequest(product, request, storeId);
         Product saved = productRepository.save(product);
+        cleanupRemovedImages(storeId, orgId, publicProductId, previousImages, imageUrls(saved));
 
         // Record a 301 redirect when the slug changed and the merchant opted in.
         if (Boolean.TRUE.equals(request.createRedirect())
@@ -167,8 +201,11 @@ public class StoreProductService {
         return toData(saved);
     }
 
-    public void delete(String storeId, String publicProductId) {
-        productRepository.delete(require(storeId, publicProductId));
+    public void delete(String storeId, String orgId, String publicProductId) {
+        Product product = require(storeId, publicProductId);
+        Set<String> images = imageUrls(product);
+        deleteImagesAfterCommit(storeId, orgId, publicProductId, images);
+        productRepository.delete(product);
     }
 
     public List<ProductRedirectData> redirects(String storeId) {
@@ -182,6 +219,88 @@ public class StoreProductService {
     private Product require(String storeId, String publicProductId) {
         return productRepository.findByStoreIdAndPublicProductId(storeId, publicProductId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Product not found"));
+    }
+
+    private Set<String> imageUrls(Product product) {
+        Set<String> urls = new LinkedHashSet<>();
+        if (product == null || product.getImages() == null) {
+            return urls;
+        }
+        for (ProductImage image : product.getImages()) {
+            if (image.getUrl() != null && !image.getUrl().isBlank()) {
+                urls.add(image.getUrl().trim());
+            }
+        }
+        return urls;
+    }
+
+    private void cleanupRemovedImages(
+            String storeId,
+            String legacyOrgId,
+            String publicProductId,
+            Set<String> previousImages,
+            Set<String> currentImages) {
+        if (previousImages == null || previousImages.isEmpty()) {
+            return;
+        }
+        Set<String> removed = new LinkedHashSet<>(previousImages);
+        if (currentImages != null) {
+            removed.removeAll(currentImages);
+        }
+        deleteImagesAfterCommit(storeId, legacyOrgId, publicProductId, removed);
+    }
+
+    private void deleteImagesAfterCommit(String storeId, String legacyOrgId, String publicProductId, Set<String> urls) {
+        if (urls == null || urls.isEmpty()) {
+            return;
+        }
+        Set<String> deleteableUrls = unusedImageUrls(storeId, publicProductId, urls);
+        if (deleteableUrls.isEmpty()) {
+            return;
+        }
+        removeMediaLibraryRows(storeId, deleteableUrls);
+        Set<String> copy = new LinkedHashSet<>(deleteableUrls);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    productMediaStorageService.deleteProductImagesAsync(storeId, legacyOrgId, copy);
+                }
+            });
+        } else {
+            productMediaStorageService.deleteProductImagesAsync(storeId, legacyOrgId, copy);
+        }
+    }
+
+    private Set<String> unusedImageUrls(String storeId, String publicProductId, Set<String> urls) {
+        Set<String> normalizedUrls = normalizeUrls(urls);
+        if (normalizedUrls.isEmpty()) {
+            return normalizedUrls;
+        }
+        Set<String> urlsStillInUse =
+                productRepository.findImageUrlsStillInUseByOtherProducts(storeId, publicProductId, normalizedUrls);
+        normalizedUrls.removeAll(urlsStillInUse);
+        return normalizedUrls;
+    }
+
+    private void removeMediaLibraryRows(String storeId, Set<String> urls) {
+        List<StoreMedia> mediaRows = storeMediaRepository.findByStoreIdAndUrlIn(storeId, urls);
+        if (!mediaRows.isEmpty()) {
+            storeMediaRepository.deleteAll(mediaRows);
+        }
+    }
+
+    private Set<String> normalizeUrls(Set<String> urls) {
+        Set<String> normalizedUrls = new LinkedHashSet<>();
+        if (urls == null) {
+            return normalizedUrls;
+        }
+        for (String url : urls) {
+            if (url != null && !url.isBlank()) {
+                normalizedUrls.add(url.trim());
+            }
+        }
+        return normalizedUrls;
     }
 
     private void applyRequest(Product product, ProductRequest request, String storeId) {
@@ -368,6 +487,26 @@ public class StoreProductService {
                 product.getSalesCount() == null ? 0 : product.getSalesCount(),
                 product.getTags().stream().map(Tag::getName).toList(),
                 product.getCreatedAt());
+    }
+
+    private ProductPickerData toPicker(Product product) {
+        String image = product.getImages().stream()
+                .filter(ProductImage::isPrimaryImage)
+                .findFirst()
+                .or(() -> product.getImages().stream().findFirst())
+                .map(ProductImage::getUrl)
+                .orElse(null);
+        return new ProductPickerData(
+                product.getPublicProductId(),
+                product.getTitle(),
+                product.getSku(),
+                image,
+                product.getPrice(),
+                product.getStock(),
+                product.isTaxable(),
+                product.getTaxRate(),
+                product.getVendor(),
+                product.getCategory());
     }
 
     /** Parse an ISO-8601 instant sent by the date-range filter; blank means "no bound". */

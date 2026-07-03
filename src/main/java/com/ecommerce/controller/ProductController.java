@@ -3,6 +3,9 @@ package com.ecommerce.controller;
 import com.ecommerce.auth.AuthAudience;
 import com.ecommerce.auth.CurrentAccountData;
 import com.ecommerce.auth.CurrentAccountService;
+import com.ecommerce.media.ProductMediaStorageService;
+import com.ecommerce.media.ProductMediaUploadData;
+import com.ecommerce.media.StoreMediaService;
 import com.ecommerce.product.GenerateDescriptionData;
 import com.ecommerce.product.GenerateDescriptionRequest;
 import com.ecommerce.product.GenerateImageData;
@@ -11,11 +14,14 @@ import com.ecommerce.product.ProductAiService;
 import com.ecommerce.product.ProductData;
 import com.ecommerce.product.ProductListData;
 import com.ecommerce.product.ProductOverviewData;
+import com.ecommerce.product.ProductPickerListData;
 import com.ecommerce.product.ProductRequest;
 import com.ecommerce.product.StoreProductService;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,6 +33,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
@@ -34,14 +41,20 @@ import org.springframework.web.server.ResponseStatusException;
 public class ProductController {
     private final StoreProductService productService;
     private final ProductAiService productAiService;
+    private final ProductMediaStorageService productMediaStorageService;
+    private final StoreMediaService storeMediaService;
     private final CurrentAccountService currentAccountService;
 
     public ProductController(
             StoreProductService productService,
             ProductAiService productAiService,
+            ProductMediaStorageService productMediaStorageService,
+            StoreMediaService storeMediaService,
             CurrentAccountService currentAccountService) {
         this.productService = productService;
         this.productAiService = productAiService;
+        this.productMediaStorageService = productMediaStorageService;
+        this.storeMediaService = storeMediaService;
         this.currentAccountService = currentAccountService;
     }
 
@@ -79,6 +92,18 @@ public class ProductController {
         return ok("Product redirects loaded", productService.redirects(scope.storeId()));
     }
 
+    @GetMapping("/{audience}/auth/products/browse")
+    public ResponseEntity<Map<String, Object>> browse(
+            @PathVariable String audience,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        StoreScope scope = resolveScope(authorization, audience);
+        ProductPickerListData data = productService.picker(scope.storeId(), search, page, size);
+        return ok("Products loaded", data);
+    }
+
     @GetMapping("/{audience}/auth/products/{publicProductId}")
     public ResponseEntity<Map<String, Object>> get(
             @PathVariable String audience,
@@ -99,6 +124,19 @@ public class ProductController {
         return ok("Product created", data);
     }
 
+    @PostMapping(value = "/{audience}/auth/products/media", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, Object>> uploadMedia(
+            @PathVariable String audience,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam("files") List<MultipartFile> files) {
+        StoreScope scope = resolveScope(authorization, audience);
+        List<ProductMediaUploadData> data = productMediaStorageService.uploadProductImages(scope.storeId(), files);
+        for (ProductMediaUploadData item : data) {
+            storeMediaService.persist(scope.storeId(), item, "upload");
+        }
+        return ok("Product media uploaded", data);
+    }
+
     @PutMapping("/{audience}/auth/products/{publicProductId}")
     public ResponseEntity<Map<String, Object>> update(
             @PathVariable String audience,
@@ -106,7 +144,7 @@ public class ProductController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody ProductRequest request) {
         StoreScope scope = resolveScope(authorization, audience);
-        ProductData data = productService.update(scope.storeId(), publicProductId, request);
+        ProductData data = productService.update(scope.storeId(), scope.orgId(), publicProductId, request);
         return ok("Product updated", data);
     }
 
@@ -116,7 +154,7 @@ public class ProductController {
             @PathVariable String publicProductId,
             @RequestHeader(value = "Authorization", required = false) String authorization) {
         StoreScope scope = resolveScope(authorization, audience);
-        productService.delete(scope.storeId(), publicProductId);
+        productService.delete(scope.storeId(), scope.orgId(), publicProductId);
         return ok("Product deleted", null);
     }
 
@@ -148,7 +186,10 @@ public class ProductController {
         if (currentAccount.store() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Store setup required before managing products");
         }
-        return new StoreScope(currentAccount.store().storeId(), currentAccount.user().publicUserId());
+        return new StoreScope(
+                currentAccount.store().storeId(),
+                currentAccount.store().orgId(),
+                currentAccount.user().publicUserId());
     }
 
     private ResponseEntity<Map<String, Object>> ok(String message, Object data) {
@@ -159,5 +200,5 @@ public class ProductController {
         return ResponseEntity.ok(response);
     }
 
-    private record StoreScope(String storeId, String ownerPublicUserId) {}
+    private record StoreScope(String storeId, String orgId, String ownerPublicUserId) {}
 }

@@ -4,7 +4,9 @@ server:
 
 spring:
   config:
-    import: optional:file:.env[.properties]
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:.env.local[.properties]
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:ecommerce_db;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false}
     username: ${SPRING_DATASOURCE_USERNAME:sa}
@@ -52,5 +54,11 @@ app:
     device-token: ${GEO_DEVICE_TOKEN:st_tkn_8f92a1b7c3d4e5f6}
     lookup-base-url: ${GEO_LOOKUP_BASE_URL:https://ipwho.is}
     public-ip-url: ${GEO_PUBLIC_IP_URL:https://api.ipify.org?format=json}
+  storage:
+    public-base-url: ${APP_STORAGE_PUBLIC_BASE_URL:https://storage.googleapis.com}
+    google:
+      public-bucket: ${GOOGLE_CLOUD_BUCKET_PUBLIC:shy-pub}
+      project-id: ${GOOGLE_CLOUD_PROJECT_ID:}
+      credentials-location: ${GOOGLE_APPLICATION_CREDENTIALS:}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:*}

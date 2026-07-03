@@ -3,15 +3,21 @@ package com.ecommerce.product;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.ecommerce.media.ProductMediaStorageService;
+import com.ecommerce.media.StoreMediaRepository;
 import com.ecommerce.tag.StoreTagService;
 import com.ecommerce.tag.TagRepository;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.transaction.support.TransactionSynchronizationUtils;
 import org.springframework.web.server.ResponseStatusException;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 /**
  * Isolated persistence tests for {@link StoreProductService} against embedded H2.
@@ -28,18 +34,27 @@ import org.springframework.web.server.ResponseStatusException;
         })
 class StoreProductServiceTest {
     private static final String STORE = "store-1";
+    private static final String ORG = "org-1";
     private static final String OWNER = "owner-1";
     private static final BigDecimal TEN = new BigDecimal("10.00");
 
     @Autowired private ProductRepository productRepository;
     @Autowired private ProductRedirectRepository redirectRepository;
     @Autowired private TagRepository tagRepository;
+    @Autowired private StoreMediaRepository storeMediaRepository;
 
     private StoreProductService service;
+    private ProductMediaStorageService storageService;
 
     @BeforeEach
     void setUp() {
-        service = new StoreProductService(productRepository, redirectRepository, new StoreTagService(tagRepository));
+        storageService = mock(ProductMediaStorageService.class);
+        service = new StoreProductService(
+                productRepository,
+                redirectRepository,
+                new StoreTagService(tagRepository),
+                storageService,
+                storeMediaRepository);
     }
 
     /** Build a minimal ProductRequest; only the columns exercised by tests are set. */
@@ -60,6 +75,16 @@ class StoreProductServiceTest {
                 null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null,
                 createRedirect, List.of(), List.of());
+    }
+
+    private ProductRequest reqWithImages(String title, List<ProductImageRequest> images) {
+        return new ProductRequest(
+                title, null, null, null, null, null,
+                null, null, null, null,
+                TEN, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null,
+                null, List.of(), images);
     }
 
     @Test
@@ -110,7 +135,11 @@ class StoreProductServiceTest {
     void updateKeepingOwnSkuIsAllowed() {
         ProductData created = service.create(STORE, OWNER, req("A", TEN, "OWN", null, null, null, null, null, null));
         ProductData updated =
-                service.update(STORE, created.publicProductId(), req("A renamed", TEN, "OWN", null, null, null, null, null, null));
+                service.update(
+                        STORE,
+                        ORG,
+                        created.publicProductId(),
+                        req("A renamed", TEN, "OWN", null, null, null, null, null, null));
         assertThat(updated.sku()).isEqualTo("OWN");
         assertThat(updated.title()).isEqualTo("A renamed");
     }
@@ -120,7 +149,11 @@ class StoreProductServiceTest {
         service.create(STORE, OWNER, req("A", TEN, "AAA", null, null, null, null, null, null));
         ProductData b = service.create(STORE, OWNER, req("B", TEN, "BBB", null, null, null, null, null, null));
         assertThatThrownBy(() ->
-                        service.update(STORE, b.publicProductId(), req("B", TEN, "AAA", null, null, null, null, null, null)))
+                        service.update(
+                                STORE,
+                                ORG,
+                                b.publicProductId(),
+                                req("B", TEN, "AAA", null, null, null, null, null, null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("already used");
     }
@@ -144,7 +177,11 @@ class StoreProductServiceTest {
     @Test
     void slugRedirectRecordedWhenSlugChangesAndFlagSet() {
         ProductData created = service.create(STORE, OWNER, req("Kurta", TEN, null, null, null, null, null, "old-slug", null));
-        service.update(STORE, created.publicProductId(), req("Kurta", TEN, null, null, null, null, null, "new-slug", true));
+        service.update(
+                STORE,
+                ORG,
+                created.publicProductId(),
+                req("Kurta", TEN, null, null, null, null, null, "new-slug", true));
 
         List<ProductRedirectData> redirects = service.redirects(STORE);
         assertThat(redirects).hasSize(1);
@@ -156,7 +193,46 @@ class StoreProductServiceTest {
     @Test
     void noRedirectWhenFlagNotSet() {
         ProductData created = service.create(STORE, OWNER, req("Kurta", TEN, null, null, null, null, null, "old-slug", null));
-        service.update(STORE, created.publicProductId(), req("Kurta", TEN, null, null, null, null, null, "new-slug", false));
+        service.update(
+                STORE,
+                ORG,
+                created.publicProductId(),
+                req("Kurta", TEN, null, null, null, null, null, "new-slug", false));
         assertThat(service.redirects(STORE)).isEmpty();
+    }
+
+    @Test
+    void updateDeletesRemovedCloudImages() {
+        String oldUrl = "https://storage.googleapis.com/shy-pub/store-1/old.jpg";
+        String keptUrl = "https://storage.googleapis.com/shy-pub/store-1/kept.jpg";
+        ProductData created = service.create(
+                STORE,
+                OWNER,
+                reqWithImages("Kurta", List.of(
+                        new ProductImageRequest(oldUrl, null, 0, true),
+                        new ProductImageRequest(keptUrl, null, 1, false))));
+
+        service.update(
+                STORE,
+                ORG,
+                created.publicProductId(),
+                reqWithImages("Kurta", List.of(new ProductImageRequest(keptUrl, null, 0, true))));
+
+        TransactionSynchronizationUtils.triggerAfterCommit();
+        verify(storageService).deleteProductImagesAsync(STORE, ORG, Set.of(oldUrl));
+    }
+
+    @Test
+    void deleteProductDeletesCloudImages() {
+        String imageUrl = "https://storage.googleapis.com/shy-pub/store-1/product.jpg";
+        ProductData created = service.create(
+                STORE,
+                OWNER,
+                reqWithImages("Kurta", List.of(new ProductImageRequest(imageUrl, null, 0, true))));
+
+        service.delete(STORE, ORG, created.publicProductId());
+
+        TransactionSynchronizationUtils.triggerAfterCommit();
+        verify(storageService).deleteProductImagesAsync(STORE, ORG, Set.of(imageUrl));
     }
 }

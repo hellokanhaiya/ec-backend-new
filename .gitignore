@@ -1,6 +1,13 @@
 # Build output
 target/
 
+# Local secrets / machine-specific config
+.env.local
+
+# Google Cloud service-account key (never commit secrets)
+google-cloud-cred.json
+*-service-account.json
+
 
 # Logs
 *.log
