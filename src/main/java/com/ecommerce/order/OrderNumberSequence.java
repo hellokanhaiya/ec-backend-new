@@ -42,7 +42,7 @@ public class OrderNumberSequence {
     @Column(name = "period_key", nullable = false, length = 16)
     private String periodKey;
 
-    @Column(name = "last_value", nullable = false)
+    @Column(name = "`last_value`", nullable = false)
     private Long lastValue = 0L;
 
     @Column(name = "created_at", nullable = false, updatable = false)

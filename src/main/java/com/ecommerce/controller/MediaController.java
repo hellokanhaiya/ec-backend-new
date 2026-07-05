@@ -1,8 +1,9 @@
 package com.ecommerce.controller;
 
-import com.ecommerce.auth.AuthAudience;
-import com.ecommerce.auth.CurrentAccountData;
-import com.ecommerce.auth.CurrentAccountService;
+import com.ecommerce.access.AccessControlService;
+import com.ecommerce.access.AccessLevel;
+import com.ecommerce.access.PermissionCatalog;
+import com.ecommerce.access.StoreAccessScope;
 import com.ecommerce.media.MediaData;
 import com.ecommerce.media.MediaKeepRequest;
 import com.ecommerce.media.MediaListData;
@@ -33,15 +34,15 @@ import org.springframework.web.server.ResponseStatusException;
 public class MediaController {
     private final StoreMediaService mediaService;
     private final ProductMediaStorageService storageService;
-    private final CurrentAccountService currentAccountService;
+    private final AccessControlService accessControl;
 
     public MediaController(
             StoreMediaService mediaService,
             ProductMediaStorageService storageService,
-            CurrentAccountService currentAccountService) {
+            AccessControlService accessControl) {
         this.mediaService = mediaService;
         this.storageService = storageService;
-        this.currentAccountService = currentAccountService;
+        this.accessControl = accessControl;
     }
 
     @GetMapping("/{audience}/auth/media")
@@ -62,7 +63,7 @@ public class MediaController {
             @RequestParam(required = false) String dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.PRODUCTS_MEDIA, AccessLevel.VIEW);
         MediaListData data = mediaService.list(
                 scope.storeId(),
                 search,
@@ -87,7 +88,7 @@ public class MediaController {
             @PathVariable String audience,
             @PathVariable String publicMediaId,
             @RequestHeader(value = "Authorization", required = false) String authorization) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.PRODUCTS_MEDIA, AccessLevel.VIEW);
         MediaData data = mediaService.get(scope.storeId(), publicMediaId);
         return ok("Media loaded", data);
     }
@@ -97,7 +98,7 @@ public class MediaController {
             @PathVariable String audience,
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam("files") List<MultipartFile> files) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.PRODUCTS_MEDIA, AccessLevel.MANAGE);
         List<ProductMediaUploadData> uploaded = storageService.uploadProductImages(scope.storeId(), files);
         List<MediaData> persisted = new ArrayList<>();
         for (ProductMediaUploadData item : uploaded) {
@@ -111,7 +112,7 @@ public class MediaController {
             @PathVariable String audience,
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody MediaKeepRequest request) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.PRODUCTS_MEDIA, AccessLevel.MANAGE);
         if (request == null || request.url() == null || request.url().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Image URL is required");
         }
@@ -128,20 +129,14 @@ public class MediaController {
             @PathVariable String audience,
             @PathVariable String publicMediaId,
             @RequestHeader(value = "Authorization", required = false) String authorization) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.PRODUCTS_MEDIA, AccessLevel.MANAGE);
         mediaService.delete(scope.storeId(), publicMediaId);
         return ok("Media deleted", null);
     }
 
-    private StoreScope resolveScope(String authorization, String audience) {
-        CurrentAccountData currentAccount = currentAccountService.resolveCurrentAccount(authorization);
-        if (currentAccount.audience() != AuthAudience.from(audience)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Audience mismatch");
-        }
-        if (currentAccount.store() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Store setup required before managing media");
-        }
-        return new StoreScope(currentAccount.store().storeId(), currentAccount.store().orgId());
+    private StoreScope resolveScope(String authorization, String audience, String permissionKey, AccessLevel required) {
+        StoreAccessScope scope = accessControl.requireScope(authorization, audience, permissionKey, required);
+        return new StoreScope(scope.storeId(), scope.orgId());
     }
 
     private ResponseEntity<Map<String, Object>> ok(String message, Object data) {

@@ -1,8 +1,9 @@
 package com.ecommerce.controller;
 
-import com.ecommerce.auth.AuthAudience;
-import com.ecommerce.auth.CurrentAccountData;
-import com.ecommerce.auth.CurrentAccountService;
+import com.ecommerce.access.AccessControlService;
+import com.ecommerce.access.AccessLevel;
+import com.ecommerce.access.PermissionCatalog;
+import com.ecommerce.access.StoreAccessScope;
 import com.ecommerce.order.OrderBulkDeleteRequest;
 import com.ecommerce.order.OrderData;
 import com.ecommerce.order.OrderExportRequest;
@@ -31,22 +32,21 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/v1")
 public class OrderController {
     private final StoreOrderService orderService;
     private final StoreOrderSettingsService settingsService;
-    private final CurrentAccountService currentAccountService;
+    private final AccessControlService accessControl;
 
     public OrderController(
             StoreOrderService orderService,
             StoreOrderSettingsService settingsService,
-            CurrentAccountService currentAccountService) {
+            AccessControlService accessControl) {
         this.orderService = orderService;
         this.settingsService = settingsService;
-        this.currentAccountService = currentAccountService;
+        this.accessControl = accessControl;
     }
 
     // --- Order CRUD ---------------------------------------------------------
@@ -63,7 +63,7 @@ public class OrderController {
             @RequestParam(required = false) String customerName,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.ORDERS_ALL, AccessLevel.VIEW);
         OrderListData data = orderService.list(
                 scope.storeId(), search, payment, fulfillment, dateFrom, dateTo, customerName, page, size);
         return ok("Orders loaded", data);
@@ -73,7 +73,7 @@ public class OrderController {
     public ResponseEntity<Map<String, Object>> overview(
             @PathVariable String audience,
             @RequestHeader(value = "Authorization", required = false) String authorization) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.ORDERS_ALL, AccessLevel.VIEW);
         OrderOverviewData data = orderService.overview(scope.storeId());
         return ok("Order overview loaded", data);
     }
@@ -83,7 +83,7 @@ public class OrderController {
             @PathVariable String audience,
             @PathVariable String publicOrderId,
             @RequestHeader(value = "Authorization", required = false) String authorization) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.ORDERS_ALL, AccessLevel.VIEW);
         OrderData data = orderService.get(scope.storeId(), publicOrderId);
         return ok("Order loaded", data);
     }
@@ -93,7 +93,7 @@ public class OrderController {
             @PathVariable String audience,
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody OrderRequest request) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.ORDERS_CREATE, AccessLevel.MANAGE);
         OrderData data = orderService.create(scope.storeId(), scope.ownerPublicUserId(), request);
         return ok("Order created", data);
     }
@@ -104,7 +104,7 @@ public class OrderController {
             @PathVariable String publicOrderId,
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody OrderRequest request) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.ORDERS_ALL, AccessLevel.EDIT);
         OrderData data = orderService.update(scope.storeId(), publicOrderId, request);
         return ok("Order updated", data);
     }
@@ -114,7 +114,7 @@ public class OrderController {
             @PathVariable String audience,
             @PathVariable String publicOrderId,
             @RequestHeader(value = "Authorization", required = false) String authorization) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.ORDERS_ALL, AccessLevel.MANAGE);
         orderService.delete(scope.storeId(), publicOrderId);
         return ok("Order deleted", null);
     }
@@ -126,7 +126,7 @@ public class OrderController {
             @PathVariable String audience,
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody OrderBulkDeleteRequest request) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.ORDERS_ALL, AccessLevel.MANAGE);
         int deleted = orderService.bulkDelete(scope.storeId(), request == null ? null : request.ids());
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("deleted", deleted);
@@ -138,7 +138,7 @@ public class OrderController {
             @PathVariable String audience,
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody(required = false) OrderExportRequest request) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.ORDERS_ALL, AccessLevel.VIEW);
         byte[] data = orderService.exportCsv(scope.storeId(), request == null ? null : request.ids());
         return download(data, MediaType.parseMediaType("text/csv"), "orders-" + Instant.now().toEpochMilli() + ".csv");
     }
@@ -151,7 +151,7 @@ public class OrderController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody(required = false) OrderExportRequest request,
             @RequestParam(required = false) String templateId) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.ORDERS_ALL, AccessLevel.VIEW);
         byte[] data = orderService.invoicePdf(
                 scope.storeId(), request == null ? null : request.ids(), templateId);
         return download(data, MediaType.APPLICATION_PDF, "order-invoices.pdf");
@@ -163,7 +163,7 @@ public class OrderController {
             @PathVariable String publicOrderId,
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam(required = false) String templateId) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.ORDERS_ALL, AccessLevel.VIEW);
         byte[] data = orderService.invoicePdf(scope.storeId(), java.util.List.of(publicOrderId), templateId);
         return download(data, MediaType.APPLICATION_PDF, publicOrderId + "-invoice.pdf");
     }
@@ -176,7 +176,7 @@ public class OrderController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody(required = false) OrderExportRequest request,
             @RequestParam(required = false) String templateId) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.ORDERS_ALL, AccessLevel.VIEW);
         byte[] data = orderService.shippingLabelPdf(
                 scope.storeId(), request == null ? null : request.ids(), templateId);
         return download(data, MediaType.APPLICATION_PDF, "shipping-labels.pdf");
@@ -188,7 +188,7 @@ public class OrderController {
             @PathVariable String publicOrderId,
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam(required = false) String templateId) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.ORDERS_ALL, AccessLevel.VIEW);
         byte[] data = orderService.shippingLabelPdf(scope.storeId(), java.util.List.of(publicOrderId), templateId);
         return download(data, MediaType.APPLICATION_PDF, publicOrderId + "-shipping-label.pdf");
     }
@@ -199,7 +199,7 @@ public class OrderController {
     public ResponseEntity<Map<String, Object>> getSettings(
             @PathVariable String audience,
             @RequestHeader(value = "Authorization", required = false) String authorization) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.ORDERS_ALL, AccessLevel.VIEW);
         OrderSettingsData data = settingsService.get(scope.storeId());
         return ok("Order settings loaded", data);
     }
@@ -209,22 +209,16 @@ public class OrderController {
             @PathVariable String audience,
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody OrderSettingsRequest request) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.ORDERS_ALL, AccessLevel.MANAGE);
         OrderSettingsData data = settingsService.save(scope.storeId(), scope.ownerPublicUserId(), request);
         return ok("Order settings saved", data);
     }
 
     // --- Helpers ------------------------------------------------------------
 
-    private StoreScope resolveScope(String authorization, String audience) {
-        CurrentAccountData currentAccount = currentAccountService.resolveCurrentAccount(authorization);
-        if (currentAccount.audience() != AuthAudience.from(audience)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Audience mismatch");
-        }
-        if (currentAccount.store() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Store setup required before managing orders");
-        }
-        return new StoreScope(currentAccount.store().storeId(), currentAccount.user().publicUserId());
+    private StoreScope resolveScope(String authorization, String audience, String permissionKey, AccessLevel required) {
+        StoreAccessScope scope = accessControl.requireScope(authorization, audience, permissionKey, required);
+        return new StoreScope(scope.storeId(), scope.publicUserId());
     }
 
     private ResponseEntity<Map<String, Object>> ok(String message, Object data) {

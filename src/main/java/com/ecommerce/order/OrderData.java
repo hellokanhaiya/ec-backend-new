@@ -17,6 +17,13 @@ public record OrderData(
         BigDecimal subtotal,
         BigDecimal tax,
         BigDecimal discount,
+        String promotionPublicId,
+        String promotionCode,
+        String promotionName,
+        String promotionType,
+        String promotionSummary,
+        boolean promotionFreeShipping,
+        BigDecimal promotionShippingSavings,
         BigDecimal shippingCharge,
         BigDecimal packageCharge,
         String payment,
@@ -34,4 +41,5 @@ public record OrderData(
         OrderAddressData address,
         String currencyCode,
         String currencySymbol,
-        String currencyCountryCode) {}
+        String currencyCountryCode,
+        String warehousePublicId) {}

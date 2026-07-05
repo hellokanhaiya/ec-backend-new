@@ -5,7 +5,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 import com.ecommerce.customer.StoreCustomerService;
+import com.ecommerce.promotion.StorePromotionService;
 import com.ecommerce.store.StoreProfileRepository;
+import com.ecommerce.warehouse.StoreInventoryService;
+import com.ecommerce.warehouse.StoreWarehouseService;
 import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,7 +41,10 @@ class StoreOrderServiceTest {
                 mock(OrderSettingsRepository.class),
                 mock(OrderNumberSequenceRepository.class),
                 mock(PdfTemplateRepository.class),
-                mock(StoreCustomerService.class));
+                mock(StoreCustomerService.class),
+                mock(StoreWarehouseService.class),
+                mock(StoreInventoryService.class),
+                mock(StorePromotionService.class));
     }
 
     @Test
@@ -99,6 +105,7 @@ class StoreOrderServiceTest {
             BigDecimal shippingCharge,
             BigDecimal packageCharge) {
         return new OrderRequest(
+                null,
                 null,
                 null,
                 "Rahul Sharma",

@@ -6,6 +6,8 @@ import com.ecommerce.auth.entity.AdminAuthSession;
 import com.ecommerce.auth.entity.AdminAuthUser;
 import com.ecommerce.auth.entity.ConsumerAuthSession;
 import com.ecommerce.auth.entity.ConsumerAuthUser;
+import com.ecommerce.access.StoreAccessData;
+import com.ecommerce.access.StoreAccessService;
 import com.ecommerce.auth.repository.AdminAuthSessionRepository;
 import com.ecommerce.auth.repository.AdminAuthUserRepository;
 import com.ecommerce.auth.repository.ConsumerAuthSessionRepository;
@@ -26,20 +28,25 @@ public class CurrentAccountService {
     private final AdminAuthUserRepository adminAuthUserRepository;
     private final ConsumerAuthUserRepository consumerAuthUserRepository;
     private final BusinessStoreService businessStoreService;
+    private final StoreAccessService storeAccessService;
 
     public CurrentAccountService(
             AdminAuthSessionRepository adminAuthSessionRepository,
             ConsumerAuthSessionRepository consumerAuthSessionRepository,
             AdminAuthUserRepository adminAuthUserRepository,
             ConsumerAuthUserRepository consumerAuthUserRepository,
-            BusinessStoreService businessStoreService) {
+            BusinessStoreService businessStoreService,
+            StoreAccessService storeAccessService) {
         this.adminAuthSessionRepository = adminAuthSessionRepository;
         this.consumerAuthSessionRepository = consumerAuthSessionRepository;
         this.adminAuthUserRepository = adminAuthUserRepository;
         this.consumerAuthUserRepository = consumerAuthUserRepository;
         this.businessStoreService = businessStoreService;
+        this.storeAccessService = storeAccessService;
     }
 
+    // Read-write: may lazily seed default roles and link pending invites on first touch.
+    @Transactional
     public CurrentAccountData resolveCurrentAccount(String authorizationHeader) {
         String token = extractBearerToken(authorizationHeader);
         String tokenHash = AuthSupport.hashToken(token);
@@ -58,9 +65,41 @@ public class CurrentAccountService {
         AbstractAuthUser user = findUser(sessionMatch.audience(), session.getUserId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Linked account not found"));
 
-        Optional<BusinessStoreData> store = businessStoreService.findStoreProfile(sessionMatch.audience(), user.getPublicId());
+        AuthAudience audience = sessionMatch.audience();
+        BusinessStoreData store = null;
+        StoreAccessData access = null;
+        boolean onboardingRequired = false;
+
+        if (audience == AuthAudience.ADMIN) {
+            Optional<BusinessStoreData> ownerStore = businessStoreService.findStoreProfile(audience, user.getPublicId());
+            if (ownerStore.isPresent()) {
+                // The store owner: seed default roles + owner member on first touch, full access.
+                store = ownerStore.get();
+                storeAccessService.ensureDefaultsForStore(
+                        store.storeId(), user.getId(), user.getEmail(), user.getDisplayName());
+                access = storeAccessService.resolveAccess(store.storeId(), user.getId(), true);
+            } else {
+                // A staff member of someone else's store — link any pending invite, then resolve.
+                Optional<String> memberStoreId = storeAccessService.findMemberStoreId(user.getId());
+                if (memberStoreId.isEmpty()) {
+                    storeAccessService.linkPendingInvites(user.getId(), user.getEmail());
+                    memberStoreId = storeAccessService.findMemberStoreId(user.getId());
+                }
+                if (memberStoreId.isPresent()) {
+                    store = businessStoreService.findStoreByStoreId(memberStoreId.get()).orElse(null);
+                    if (store != null) {
+                        access = storeAccessService.resolveAccess(store.storeId(), user.getId(), false);
+                    }
+                } else {
+                    onboardingRequired = true;
+                }
+            }
+        } else {
+            store = businessStoreService.findStoreProfile(audience, user.getPublicId()).orElse(null);
+        }
+
         return new CurrentAccountData(
-                sessionMatch.audience(),
+                audience,
                 new CurrentAccountUserData(
                         user.getId(),
                         user.getPublicId(),
@@ -70,8 +109,9 @@ public class CurrentAccountService {
                         user.getStatus().name(),
                         user.getEmailVerifiedAt(),
                         user.getPhoneVerifiedAt()),
-                store.orElse(null),
-                sessionMatch.audience() == AuthAudience.ADMIN && store.isEmpty());
+                store,
+                onboardingRequired,
+                access);
     }
 
     private Optional<SessionMatch> findSession(String tokenHash) {

@@ -118,6 +118,14 @@ public class BusinessStoreService {
                 .map(this::toData);
     }
 
+    /** Resolve a store by its storeId — used to load the store a staff member belongs to. */
+    public Optional<BusinessStoreData> findStoreByStoreId(String storeId) {
+        if (storeId == null || storeId.isBlank()) {
+            return Optional.empty();
+        }
+        return storeProfileRepository.findByStoreId(storeId.trim()).map(this::toData);
+    }
+
     private void validateRequest(BusinessStoreRequest request, String ownerPublicUserId) {
         if (request == null) {
             throw new ResponseStatusException(BAD_REQUEST, "Business profile is required");

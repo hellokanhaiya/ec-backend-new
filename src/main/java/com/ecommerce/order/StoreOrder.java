@@ -54,6 +54,10 @@ public class StoreOrder {
     @Column(name = "customer_public_id", length = 36)
     private String customerPublicId;
 
+    /** Warehouse this order is fulfilled from; defaults to the store's default warehouse. */
+    @Column(name = "fulfillment_warehouse_public_id", length = 36)
+    private String fulfillmentWarehousePublicId;
+
     @Column(name = "customer_name", nullable = false, length = 255)
     private String customerName;
 
@@ -126,6 +130,27 @@ public class StoreOrder {
 
     @Column(name = "discount_value", precision = 15, scale = 2)
     private BigDecimal discountValue = BigDecimal.ZERO;
+
+    @Column(name = "promotion_public_id", length = 36)
+    private String promotionPublicId;
+
+    @Column(name = "promotion_code", length = 80)
+    private String promotionCode;
+
+    @Column(name = "promotion_name", length = 255)
+    private String promotionName;
+
+    @Column(name = "promotion_type", length = 36)
+    private String promotionType;
+
+    @Column(name = "promotion_summary", length = 1000)
+    private String promotionSummary;
+
+    @Column(name = "promotion_free_shipping", nullable = false)
+    private boolean promotionFreeShipping;
+
+    @Column(name = "promotion_shipping_savings", nullable = false, precision = 15, scale = 2)
+    private BigDecimal promotionShippingSavings = BigDecimal.ZERO;
 
     @Column(name = "subtotal", nullable = false, precision = 15, scale = 2)
     private BigDecimal subtotal = BigDecimal.ZERO;

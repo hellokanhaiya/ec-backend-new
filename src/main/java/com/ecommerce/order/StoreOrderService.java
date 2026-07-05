@@ -5,8 +5,13 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 import com.ecommerce.customer.CustomerRequest;
 import com.ecommerce.customer.StoreCustomerService;
+import com.ecommerce.promotion.PromotionApplyData;
+import com.ecommerce.promotion.StorePromotionService;
 import com.ecommerce.store.StoreProfile;
 import com.ecommerce.store.StoreProfileRepository;
+import com.ecommerce.warehouse.StoreInventoryService;
+import com.ecommerce.warehouse.StoreWarehouseService;
+import java.util.LinkedHashMap;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
@@ -86,6 +91,9 @@ public class StoreOrderService {
     private final OrderNumberSequenceRepository sequenceRepository;
     private final PdfTemplateRepository templateRepository;
     private final StoreCustomerService customerService;
+    private final StoreWarehouseService warehouseService;
+    private final StoreInventoryService inventoryService;
+    private final StorePromotionService promotionService;
 
     public StoreOrderService(
             StoreOrderRepository orderRepository,
@@ -93,13 +101,19 @@ public class StoreOrderService {
             OrderSettingsRepository settingsRepository,
             OrderNumberSequenceRepository sequenceRepository,
             PdfTemplateRepository templateRepository,
-            StoreCustomerService customerService) {
+            StoreCustomerService customerService,
+            StoreWarehouseService warehouseService,
+            StoreInventoryService inventoryService,
+            StorePromotionService promotionService) {
         this.orderRepository = orderRepository;
         this.storeProfileRepository = storeProfileRepository;
         this.settingsRepository = settingsRepository;
         this.sequenceRepository = sequenceRepository;
         this.templateRepository = templateRepository;
         this.customerService = customerService;
+        this.warehouseService = warehouseService;
+        this.inventoryService = inventoryService;
+        this.promotionService = promotionService;
     }
 
     public OrderListData list(
@@ -180,6 +194,11 @@ public class StoreOrderService {
         applyRequest(order, request, storeId, ownerPublicUserId);
         order.setOrderNumber(generateOrderNumber(storeId));
         StoreOrder saved = orderRepository.save(order);
+        // New orders draw down stock at the fulfilling warehouse.
+        inventoryService.deduct(storeId, saved.getFulfillmentWarehousePublicId(), lineItemQuantities(saved));
+        if (saved.getPromotionPublicId() != null) {
+            promotionService.markRedeemed(storeId, saved.getPromotionPublicId());
+        }
         return toData(saved);
     }
 
@@ -289,6 +308,15 @@ public class StoreOrderService {
         }
 
         order.setCustomerName(customerName);
+        // Resolve the fulfilling warehouse: keep the existing one on update when not
+        // re-specified, otherwise fall back to default (or require a choice if multi-warehouse).
+        String requestedWarehouse = normalize(request.warehousePublicId());
+        if (requestedWarehouse == null && order.getFulfillmentWarehousePublicId() != null) {
+            // keep existing on update
+        } else {
+            order.setFulfillmentWarehousePublicId(
+                    warehouseService.resolveFulfillmentWarehouse(storeId, ownerPublicUserId, requestedWarehouse));
+        }
         order.setEmail(normalize(request.email()));
         order.setPhone(normalize(request.phone()));
         order.setPaymentStatus(parsePayment(request.payment()));
@@ -309,9 +337,9 @@ public class StoreOrderService {
         // Currency resolution: request > store profile > defaults
         resolveCurrency(order, request, storeId);
 
-        applyDiscount(order, request.discount());
-        applyTags(order, request.tags());
         applyLineItems(order, request.products());
+        applyDiscount(order, storeId, request.discount(), request.shippingCharge());
+        applyTags(order, request.tags());
         recalculateTotals(order, request.shippingCharge(), request.packageCharge(), storeId);
     }
 
@@ -345,13 +373,20 @@ public class StoreOrderService {
         return CURRENCY_SYMBOLS.getOrDefault(currencyCode.toUpperCase(Locale.ROOT), currencyCode);
     }
 
-    private void applyDiscount(StoreOrder order, OrderDiscountRequest discount) {
+    private void applyDiscount(StoreOrder order, String storeId, OrderDiscountRequest discount, BigDecimal requestedShipping) {
         if (discount == null) {
             order.setDiscountMode(DiscountMode.MANUAL);
             order.setDiscountType(DiscountType.FIXED);
             order.setDiscountValue(BigDecimal.ZERO);
             order.setCouponCode(null);
             order.setDiscountReason(null);
+            order.setPromotionPublicId(null);
+            order.setPromotionCode(null);
+            order.setPromotionName(null);
+            order.setPromotionType(null);
+            order.setPromotionSummary(null);
+            order.setPromotionFreeShipping(false);
+            order.setPromotionShippingSavings(BigDecimal.ZERO);
             return;
         }
         order.setDiscountMode(parseDiscountMode(discount.mode()));
@@ -363,9 +398,41 @@ public class StoreOrderService {
         if (order.getDiscountType() == DiscountType.PERCENTAGE && value.compareTo(new BigDecimal("100")) > 0) {
             throw new ResponseStatusException(BAD_REQUEST, "Percentage discount cannot exceed 100");
         }
-        order.setDiscountValue(money(value));
         order.setCouponCode(normalize(discount.code()));
         order.setDiscountReason(normalize(discount.reason()));
+        order.setPromotionPublicId(null);
+        order.setPromotionCode(null);
+        order.setPromotionName(null);
+        order.setPromotionType(null);
+        order.setPromotionSummary(null);
+        order.setPromotionFreeShipping(false);
+        order.setPromotionShippingSavings(BigDecimal.ZERO);
+
+        if (order.getDiscountMode() == DiscountMode.COUPON && order.getCouponCode() != null) {
+            PromotionApplyData promotion = promotionService
+                    .resolveForOrder(storeId, order.getCouponCode(), order.getCustomerPublicId(), requestedShipping, order.getLineItems())
+                    .orElse(null);
+            if (promotion != null) {
+                if (!promotion.qualifies()) {
+                    throw new ResponseStatusException(BAD_REQUEST, promotion.reason() == null ? "Promotion is not eligible" : promotion.reason());
+                }
+                order.setDiscountMode(DiscountMode.COUPON);
+                order.setDiscountType(DiscountType.FIXED);
+                order.setDiscountValue(money(promotion.discountAmount()));
+                order.setCouponCode(promotion.code());
+                order.setDiscountReason(normalize(promotion.summary()));
+                order.setPromotionPublicId(promotion.promotionPublicId());
+                order.setPromotionCode(promotion.code());
+                order.setPromotionName(promotion.name());
+                order.setPromotionType(promotion.type());
+                order.setPromotionSummary(promotion.summary());
+                order.setPromotionFreeShipping(promotion.freeShipping());
+                order.setPromotionShippingSavings(money(promotion.shippingSavings()));
+                return;
+            }
+        }
+
+        order.setDiscountValue(money(value));
     }
 
     private void applyTags(StoreOrder order, List<String> tags) {
@@ -452,6 +519,10 @@ public class StoreOrderService {
         BigDecimal packageCharge = requestedPackage == null ? settings.getDefaultPackageCharge() : requestedPackage;
         if (shipping.signum() < 0 || packageCharge.signum() < 0) {
             throw new ResponseStatusException(BAD_REQUEST, "Shipping and package charges cannot be negative");
+        }
+        if (order.isPromotionFreeShipping()) {
+            order.setPromotionShippingSavings(money(shipping));
+            shipping = BigDecimal.ZERO;
         }
         order.setSubtotal(money(subtotal));
         order.setDiscountAmount(money(discountAmount));
@@ -724,6 +795,20 @@ public class StoreOrderService {
 
     // --- data mapping -------------------------------------------------------
 
+    /** Sum ordered quantity per linked product (line items without a product id are skipped). */
+    private static Map<String, Integer> lineItemQuantities(StoreOrder order) {
+        Map<String, Integer> quantities = new LinkedHashMap<>();
+        for (StoreOrderLineItem item : order.getLineItems()) {
+            String productId = item.getProductPublicId();
+            if (productId == null || productId.isBlank()) {
+                continue;
+            }
+            int qty = item.getQuantity() == null ? 0 : item.getQuantity();
+            quantities.merge(productId, qty, Integer::sum);
+        }
+        return quantities;
+    }
+
     private StoreOrder require(String storeId, String publicOrderId) {
         return orderRepository.findByStoreIdAndPublicOrderId(storeId, publicOrderId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Order not found"));
@@ -752,6 +837,13 @@ public class StoreOrderService {
                 order.getSubtotal(),
                 order.getTaxAmount(),
                 order.getDiscountAmount(),
+                order.getPromotionPublicId(),
+                order.getPromotionCode(),
+                order.getPromotionName(),
+                order.getPromotionType(),
+                order.getPromotionSummary(),
+                order.isPromotionFreeShipping(),
+                order.getPromotionShippingSavings(),
                 order.getShippingCharge(),
                 order.getPackageCharge(),
                 order.getPaymentStatus().apiValue(),
@@ -769,7 +861,8 @@ public class StoreOrderService {
                 toAddress(order),
                 order.getCurrencyCode(),
                 order.getCurrencySymbol(),
-                order.getCurrencyCountryCode());
+                order.getCurrencyCountryCode(),
+                order.getFulfillmentWarehousePublicId());
     }
 
     private OrderSummaryData toSummary(StoreOrder order) {
@@ -785,6 +878,13 @@ public class StoreOrderService {
                 order.getSubtotal(),
                 order.getTaxAmount(),
                 order.getDiscountAmount(),
+                order.getPromotionPublicId(),
+                order.getPromotionCode(),
+                order.getPromotionName(),
+                order.getPromotionType(),
+                order.getPromotionSummary(),
+                order.isPromotionFreeShipping(),
+                order.getPromotionShippingSavings(),
                 order.getPaymentStatus().apiValue(),
                 order.getPaymentStatus().apiValue(),
                 order.getFulfillmentStatus().apiValue(),
@@ -799,7 +899,8 @@ public class StoreOrderService {
                 toAddress(order),
                 order.getCurrencyCode(),
                 order.getCurrencySymbol(),
-                order.getCurrencyCountryCode());
+                order.getCurrencyCountryCode(),
+                order.getFulfillmentWarehousePublicId());
     }
 
     private OrderLineItemData toLineItemData(StoreOrderLineItem item) {

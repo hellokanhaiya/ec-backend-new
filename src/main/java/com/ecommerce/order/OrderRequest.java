@@ -5,6 +5,7 @@ import java.util.List;
 
 public record OrderRequest(
         String customerPublicId,
+        String warehousePublicId,
         InlineCustomerRequest newCustomer,
         String customerName,
         String email,

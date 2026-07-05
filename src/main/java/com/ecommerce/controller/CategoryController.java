@@ -1,8 +1,9 @@
 package com.ecommerce.controller;
 
-import com.ecommerce.auth.AuthAudience;
-import com.ecommerce.auth.CurrentAccountData;
-import com.ecommerce.auth.CurrentAccountService;
+import com.ecommerce.access.AccessControlService;
+import com.ecommerce.access.AccessLevel;
+import com.ecommerce.access.PermissionCatalog;
+import com.ecommerce.access.StoreAccessScope;
 import com.ecommerce.category.CategoryBulkDeleteRequest;
 import com.ecommerce.category.CategoryData;
 import com.ecommerce.category.CategoryListData;
@@ -11,7 +12,6 @@ import com.ecommerce.category.CategoryRequest;
 import com.ecommerce.category.StoreCategoryService;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,17 +24,16 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/v1")
 public class CategoryController {
     private final StoreCategoryService categoryService;
-    private final CurrentAccountService currentAccountService;
+    private final AccessControlService accessControl;
 
-    public CategoryController(StoreCategoryService categoryService, CurrentAccountService currentAccountService) {
+    public CategoryController(StoreCategoryService categoryService, AccessControlService accessControl) {
         this.categoryService = categoryService;
-        this.currentAccountService = currentAccountService;
+        this.accessControl = accessControl;
     }
 
     @GetMapping("/{audience}/auth/categories")
@@ -42,7 +41,7 @@ public class CategoryController {
             @PathVariable String audience,
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam(required = false) String search) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.PRODUCTS_CATEGORIES, AccessLevel.VIEW);
         CategoryListData data = categoryService.list(scope.storeId(), search);
         return ok("Categories loaded", data);
     }
@@ -51,7 +50,7 @@ public class CategoryController {
     public ResponseEntity<Map<String, Object>> redirects(
             @PathVariable String audience,
             @RequestHeader(value = "Authorization", required = false) String authorization) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.PRODUCTS_CATEGORIES, AccessLevel.VIEW);
         return ok("Redirects loaded", categoryService.redirects(scope.storeId()));
     }
 
@@ -60,7 +59,7 @@ public class CategoryController {
             @PathVariable String audience,
             @PathVariable String publicCategoryId,
             @RequestHeader(value = "Authorization", required = false) String authorization) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.PRODUCTS_CATEGORIES, AccessLevel.VIEW);
         CategoryData data = categoryService.get(scope.storeId(), publicCategoryId);
         return ok("Category loaded", data);
     }
@@ -70,7 +69,7 @@ public class CategoryController {
             @PathVariable String audience,
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody CategoryRequest request) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.PRODUCTS_CATEGORIES, AccessLevel.MANAGE);
         CategoryData data = categoryService.create(scope.storeId(), scope.ownerPublicUserId(), request);
         return ok("Category created", data);
     }
@@ -81,7 +80,7 @@ public class CategoryController {
             @PathVariable String publicCategoryId,
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody CategoryRequest request) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.PRODUCTS_CATEGORIES, AccessLevel.EDIT);
         CategoryData data = categoryService.update(scope.storeId(), publicCategoryId, request);
         return ok("Category updated", data);
     }
@@ -91,7 +90,7 @@ public class CategoryController {
             @PathVariable String audience,
             @PathVariable String publicCategoryId,
             @RequestHeader(value = "Authorization", required = false) String authorization) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.PRODUCTS_CATEGORIES, AccessLevel.MANAGE);
         categoryService.delete(scope.storeId(), publicCategoryId);
         return ok("Category deleted", null);
     }
@@ -101,7 +100,7 @@ public class CategoryController {
             @PathVariable String audience,
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody CategoryReorderRequest request) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.PRODUCTS_CATEGORIES, AccessLevel.MANAGE);
         categoryService.reorder(scope.storeId(), request == null ? null : request.ids());
         return ok("Categories reordered", null);
     }
@@ -111,20 +110,14 @@ public class CategoryController {
             @PathVariable String audience,
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody CategoryBulkDeleteRequest request) {
-        StoreScope scope = resolveScope(authorization, audience);
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.PRODUCTS_CATEGORIES, AccessLevel.MANAGE);
         int deleted = categoryService.bulkDelete(scope.storeId(), request == null ? null : request.ids());
         return ok("Categories deleted", Map.of("deleted", deleted));
     }
 
-    private StoreScope resolveScope(String authorization, String audience) {
-        CurrentAccountData currentAccount = currentAccountService.resolveCurrentAccount(authorization);
-        if (currentAccount.audience() != AuthAudience.from(audience)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Audience mismatch");
-        }
-        if (currentAccount.store() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Store setup required before managing categories");
-        }
-        return new StoreScope(currentAccount.store().storeId(), currentAccount.user().publicUserId());
+    private StoreScope resolveScope(String authorization, String audience, String permissionKey, AccessLevel required) {
+        StoreAccessScope scope = accessControl.requireScope(authorization, audience, permissionKey, required);
+        return new StoreScope(scope.storeId(), scope.publicUserId());
     }
 
     private ResponseEntity<Map<String, Object>> ok(String message, Object data) {

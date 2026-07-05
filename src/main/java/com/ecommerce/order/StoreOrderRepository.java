@@ -8,4 +8,7 @@ public interface StoreOrderRepository extends JpaRepository<StoreOrder, Long> {
     List<StoreOrder> findByStoreIdOrderByCreatedAtDesc(String storeId);
 
     Optional<StoreOrder> findByStoreIdAndPublicOrderId(String storeId, String publicOrderId);
+
+    long countByStoreIdAndCustomerPublicIdAndPromotionPublicId(
+            String storeId, String customerPublicId, String promotionPublicId);
 }

@@ -1,0 +1,45 @@
+package com.ecommerce.promotion;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
+
+public record PromotionData(
+        String id,
+        String name,
+        String code,
+        String method,
+        String type,
+        String status,
+        String liveStatus,
+        String valueType,
+        BigDecimal value,
+        String customerEligibility,
+        String customerSegment,
+        List<String> customerIds,
+        String minimumRequirement,
+        BigDecimal minimumAmount,
+        Integer minimumQuantity,
+        String usageLimitMode,
+        Integer usageLimitTotal,
+        Integer usageLimitPerCustomer,
+        long usageCount,
+        boolean allowOrders,
+        boolean allowProducts,
+        boolean allowShipping,
+        List<String> tags,
+        Instant startsAt,
+        Instant endsAt,
+        String primaryTargetMode,
+        List<String> primaryTargetIds,
+        String buyTargetMode,
+        List<String> buyTargetIds,
+        String getTargetMode,
+        List<String> getTargetIds,
+        Integer buyQuantity,
+        Integer getQuantity,
+        String rewardType,
+        BigDecimal rewardValue,
+        String summary,
+        Instant createdAt,
+        Instant updatedAt) {}
