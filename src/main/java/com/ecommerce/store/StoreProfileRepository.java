@@ -9,4 +9,6 @@ public interface StoreProfileRepository extends JpaRepository<StoreProfile, Long
     Optional<StoreProfile> findByOwnerPublicUserId(String ownerPublicUserId);
 
     Optional<StoreProfile> findByOwnerUserId(Long ownerUserId);
+
+    Optional<StoreProfile> findByStoreId(String storeId);
 }

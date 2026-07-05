@@ -5,6 +5,7 @@ import java.util.List;
 
 public record OrderRequest(
         String customerPublicId,
+        InlineCustomerRequest newCustomer,
         String customerName,
         String email,
         String phone,
@@ -18,5 +19,8 @@ public record OrderRequest(
         OrderDiscountRequest discount,
         BigDecimal shippingCharge,
         BigDecimal packageCharge,
+        String currencyCode,
+        String currencySymbol,
+        String currencyCountryCode,
         List<String> tags,
         List<OrderLineItemRequest> products) {}

@@ -27,4 +27,7 @@ public record OrderSummaryData(
         String courier,
         String trackingNumber,
         String notes,
-        OrderAddressData address) {}
+        OrderAddressData address,
+        String currencyCode,
+        String currencySymbol,
+        String currencyCountryCode) {}

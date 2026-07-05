@@ -12,6 +12,11 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:sa}
     password: ${SPRING_DATASOURCE_PASSWORD:}
     driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.h2.Driver}
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 50MB
   mail:
     # Recommended low-cost SMTP option: Amazon SES.
     # Set MAIL_HOST to your SES SMTP endpoint, for example:

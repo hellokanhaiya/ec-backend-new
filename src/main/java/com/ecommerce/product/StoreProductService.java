@@ -20,6 +20,8 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ThreadLocalRandom;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -35,6 +37,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 @Transactional
 public class StoreProductService {
+    private static final Logger log = LoggerFactory.getLogger(StoreProductService.class);
     /** Stock at or below this is surfaced as "low stock" in the overview. */
     private static final int LOW_STOCK_THRESHOLD = 10;
 
@@ -135,14 +138,17 @@ public class StoreProductService {
 
         long total = filtered.size();
         List<Product> pageItems;
+        boolean hasMore;
         if (size <= 0) {
             pageItems = filtered;
+            hasMore = false;
         } else {
             int from = Math.max(0, (Math.max(page, 1) - 1) * size);
             int to = Math.min(filtered.size(), from + size);
             pageItems = from >= filtered.size() ? List.of() : filtered.subList(from, to);
+            hasMore = to < filtered.size();
         }
-        return new ProductPickerListData(pageItems.stream().map(this::toPicker).toList(), total, Math.max(page, 1), size);
+        return new ProductPickerListData(pageItems.stream().map(this::toPicker).toList(), total, Math.max(page, 1), size, hasMore);
     }
 
     public ProductData get(String storeId, String publicProductId) {
@@ -184,7 +190,9 @@ public class StoreProductService {
         String oldSlug = product.getSlug();
         applyRequest(product, request, storeId);
         Product saved = productRepository.save(product);
-        cleanupRemovedImages(storeId, orgId, publicProductId, previousImages, imageUrls(saved));
+        Set<String> currentImages = imageUrls(saved);
+        log.info("update: product {} previousImages={}, currentImages={}", publicProductId, previousImages.size(), currentImages.size());
+        cleanupRemovedImages(storeId, orgId, publicProductId, previousImages, currentImages);
 
         // Record a 301 redirect when the slug changed and the merchant opted in.
         if (Boolean.TRUE.equals(request.createRedirect())
@@ -204,6 +212,7 @@ public class StoreProductService {
     public void delete(String storeId, String orgId, String publicProductId) {
         Product product = require(storeId, publicProductId);
         Set<String> images = imageUrls(product);
+        log.info("delete: product {} has {} images to clean up", publicProductId, images.size());
         deleteImagesAfterCommit(storeId, orgId, publicProductId, images);
         productRepository.delete(product);
     }
@@ -241,33 +250,41 @@ public class StoreProductService {
             Set<String> previousImages,
             Set<String> currentImages) {
         if (previousImages == null || previousImages.isEmpty()) {
+            log.debug("cleanupRemovedImages: no previous images for product {}", publicProductId);
             return;
         }
         Set<String> removed = new LinkedHashSet<>(previousImages);
         if (currentImages != null) {
             removed.removeAll(currentImages);
         }
+        log.info("cleanupRemovedImages: product {} removed {} images: {}", publicProductId, removed.size(), removed);
         deleteImagesAfterCommit(storeId, legacyOrgId, publicProductId, removed);
     }
 
     private void deleteImagesAfterCommit(String storeId, String legacyOrgId, String publicProductId, Set<String> urls) {
         if (urls == null || urls.isEmpty()) {
+            log.debug("deleteImagesAfterCommit: no urls to delete for product {}", publicProductId);
             return;
         }
         Set<String> deleteableUrls = unusedImageUrls(storeId, publicProductId, urls);
         if (deleteableUrls.isEmpty()) {
+            log.debug("deleteImagesAfterCommit: all urls still in use for product {}", publicProductId);
             return;
         }
+        log.info("deleteImagesAfterCommit: deleting {} images for product {}: {}", deleteableUrls.size(), publicProductId, deleteableUrls);
         removeMediaLibraryRows(storeId, deleteableUrls);
         Set<String> copy = new LinkedHashSet<>(deleteableUrls);
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            log.debug("deleteImagesAfterCommit: registering afterCommit callback for product {}", publicProductId);
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
+                    log.debug("deleteImagesAfterCommit: afterCommit fired, calling deleteProductImagesAsync for product {}", publicProductId);
                     productMediaStorageService.deleteProductImagesAsync(storeId, legacyOrgId, copy);
                 }
             });
         } else {
+            log.warn("deleteImagesAfterCommit: no active synchronization, calling deleteProductImagesAsync immediately for product {}", publicProductId);
             productMediaStorageService.deleteProductImagesAsync(storeId, legacyOrgId, copy);
         }
     }

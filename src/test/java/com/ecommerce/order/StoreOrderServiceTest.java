@@ -2,7 +2,10 @@ package com.ecommerce.order;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
+import com.ecommerce.customer.StoreCustomerService;
+import com.ecommerce.store.StoreProfileRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,7 +32,13 @@ class StoreOrderServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new StoreOrderService(orderRepository);
+        service = new StoreOrderService(
+                orderRepository,
+                mock(StoreProfileRepository.class),
+                mock(OrderSettingsRepository.class),
+                mock(OrderNumberSequenceRepository.class),
+                mock(PdfTemplateRepository.class),
+                mock(StoreCustomerService.class));
     }
 
     @Test
@@ -55,10 +64,7 @@ class StoreOrderServiceTest {
 
     @Test
     void defaultShippingIsFreeAboveThreshold() {
-        OrderData order = service.create(
-                STORE,
-                OWNER,
-                request(List.of(item("Saree", "SKU-2", "6000.00", 1, false, "0")), null, null, null));
+        OrderData order = service.create(STORE, OWNER, request(List.of(item("Saree", "SKU-2", "6000.00", 1, false, "0")), null, null, null));
 
         assertThat(order.shippingCharge()).isEqualByComparingTo("0.00");
         assertThat(order.tax()).isEqualByComparingTo("0.00");
@@ -74,10 +80,10 @@ class StoreOrderServiceTest {
         int deleted = service.bulkDelete(STORE, List.of(first.id(), "missing"));
 
         assertThat(deleted).isEqualTo(1);
-        assertThat(service.list(STORE, null, null, null, null, null, 1, 0).items())
+        assertThat(service.list(STORE, null, null, null, null, null, null, 1, 0).items())
                 .extracting(OrderSummaryData::id)
                 .containsExactly(second.id());
-        assertThat(service.list("store-2", null, null, null, null, null, 1, 0).total()).isEqualTo(1);
+        assertThat(service.list("store-2", null, null, null, null, null, null, 1, 0).total()).isEqualTo(1);
     }
 
     @Test
@@ -94,6 +100,7 @@ class StoreOrderServiceTest {
             BigDecimal packageCharge) {
         return new OrderRequest(
                 null,
+                null,
                 "Rahul Sharma",
                 "rahul@example.com",
                 "+919999999999",
@@ -107,6 +114,9 @@ class StoreOrderServiceTest {
                 discount,
                 shippingCharge,
                 packageCharge,
+                null,
+                null,
+                null,
                 List.of("VIP"),
                 items);
     }

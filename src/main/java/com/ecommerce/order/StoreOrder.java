@@ -101,6 +101,15 @@ public class StoreOrder {
     @Column(name = "country", length = 80)
     private String country;
 
+    @Column(name = "currency_code", nullable = false, length = 8)
+    private String currencyCode = "INR";
+
+    @Column(name = "currency_symbol", nullable = false, length = 8)
+    private String currencySymbol = "₹";
+
+    @Column(name = "currency_country_code", nullable = false, length = 8)
+    private String currencyCountryCode = "IN";
+
     @Enumerated(EnumType.STRING)
     @Column(name = "discount_mode", nullable = false, length = 24)
     private DiscountMode discountMode = DiscountMode.MANUAL;

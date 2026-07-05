@@ -3,6 +3,10 @@ package com.ecommerce.order;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
+import com.ecommerce.customer.CustomerRequest;
+import com.ecommerce.customer.StoreCustomerService;
+import com.ecommerce.store.StoreProfile;
+import com.ecommerce.store.StoreProfileRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
@@ -13,6 +17,8 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,14 +27,79 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 @Transactional
 public class StoreOrderService {
-    private static final BigDecimal FREE_SHIPPING_THRESHOLD = new BigDecimal("4999.00");
-    private static final BigDecimal DEFAULT_SHIPPING_CHARGE = new BigDecimal("99.00");
-    private static final BigDecimal DEFAULT_TAX_RATE = new BigDecimal("18.00");
+    private static final Map<String, String> CURRENCY_SYMBOLS;
+
+    static {
+        CURRENCY_SYMBOLS = new HashMap<>();
+        CURRENCY_SYMBOLS.put("INR", "₹");
+        CURRENCY_SYMBOLS.put("USD", "$");
+        CURRENCY_SYMBOLS.put("EUR", "€");
+        CURRENCY_SYMBOLS.put("GBP", "£");
+        CURRENCY_SYMBOLS.put("NPR", "रू");
+        CURRENCY_SYMBOLS.put("AUD", "A$");
+        CURRENCY_SYMBOLS.put("CAD", "C$");
+        CURRENCY_SYMBOLS.put("SGD", "S$");
+        CURRENCY_SYMBOLS.put("JPY", "¥");
+        CURRENCY_SYMBOLS.put("CNY", "¥");
+        CURRENCY_SYMBOLS.put("KRW", "₩");
+        CURRENCY_SYMBOLS.put("BRL", "R$");
+        CURRENCY_SYMBOLS.put("RUB", "₽");
+        CURRENCY_SYMBOLS.put("ZAR", "R");
+        CURRENCY_SYMBOLS.put("CHF", "CHF");
+        CURRENCY_SYMBOLS.put("MXN", "MX$");
+        CURRENCY_SYMBOLS.put("SEK", "kr");
+        CURRENCY_SYMBOLS.put("NOK", "kr");
+        CURRENCY_SYMBOLS.put("DKK", "kr");
+        CURRENCY_SYMBOLS.put("PLN", "zł");
+        CURRENCY_SYMBOLS.put("THB", "฿");
+        CURRENCY_SYMBOLS.put("IDR", "Rp");
+        CURRENCY_SYMBOLS.put("MYR", "RM");
+        CURRENCY_SYMBOLS.put("PHP", "₱");
+        CURRENCY_SYMBOLS.put("VND", "₫");
+        CURRENCY_SYMBOLS.put("EGP", "E£");
+        CURRENCY_SYMBOLS.put("NGN", "₦");
+        CURRENCY_SYMBOLS.put("KES", "KSh");
+        CURRENCY_SYMBOLS.put("AED", "د.إ");
+        CURRENCY_SYMBOLS.put("SAR", "﷼");
+        CURRENCY_SYMBOLS.put("TRY", "₺");
+        CURRENCY_SYMBOLS.put("PKR", "₨");
+        CURRENCY_SYMBOLS.put("BDT", "৳");
+        CURRENCY_SYMBOLS.put("LKR", "Rs");
+        CURRENCY_SYMBOLS.put("ISK", "kr");
+        CURRENCY_SYMBOLS.put("HKD", "HK$");
+        CURRENCY_SYMBOLS.put("TWD", "NT$");
+        CURRENCY_SYMBOLS.put("CZK", "Kč");
+        CURRENCY_SYMBOLS.put("HUF", "Ft");
+        CURRENCY_SYMBOLS.put("RON", "lei");
+        CURRENCY_SYMBOLS.put("BGN", "лв");
+        CURRENCY_SYMBOLS.put("HRK", "kn");
+        CURRENCY_SYMBOLS.put("UAH", "₴");
+        CURRENCY_SYMBOLS.put("PHP", "₱");
+        CURRENCY_SYMBOLS.put("IDR", "Rp");
+        CURRENCY_SYMBOLS.put("MYR", "RM");
+        CURRENCY_SYMBOLS.put("VND", "₫");
+    }
 
     private final StoreOrderRepository orderRepository;
+    private final StoreProfileRepository storeProfileRepository;
+    private final OrderSettingsRepository settingsRepository;
+    private final OrderNumberSequenceRepository sequenceRepository;
+    private final PdfTemplateRepository templateRepository;
+    private final StoreCustomerService customerService;
 
-    public StoreOrderService(StoreOrderRepository orderRepository) {
+    public StoreOrderService(
+            StoreOrderRepository orderRepository,
+            StoreProfileRepository storeProfileRepository,
+            OrderSettingsRepository settingsRepository,
+            OrderNumberSequenceRepository sequenceRepository,
+            PdfTemplateRepository templateRepository,
+            StoreCustomerService customerService) {
         this.orderRepository = orderRepository;
+        this.storeProfileRepository = storeProfileRepository;
+        this.settingsRepository = settingsRepository;
+        this.sequenceRepository = sequenceRepository;
+        this.templateRepository = templateRepository;
+        this.customerService = customerService;
     }
 
     public OrderListData list(
@@ -38,10 +109,12 @@ public class StoreOrderService {
             String fulfillment,
             String dateFrom,
             String dateTo,
+            String customerName,
             int page,
             int size) {
         List<StoreOrder> all = orderRepository.findByStoreIdOrderByCreatedAtDesc(storeId);
         String query = search == null ? "" : search.trim().toLowerCase(Locale.ROOT);
+        String customerQuery = customerName == null ? "" : customerName.trim().toLowerCase(Locale.ROOT);
         PaymentStatus paymentFilter = parsePaymentFilter(payment);
         FulfillmentStatus fulfillmentFilter = parseFulfillmentFilter(fulfillment);
         Instant createdFrom = parseInstant(dateFrom);
@@ -51,6 +124,7 @@ public class StoreOrderService {
                 .filter(order -> paymentFilter == null || order.getPaymentStatus() == paymentFilter)
                 .filter(order -> fulfillmentFilter == null || order.getFulfillmentStatus() == fulfillmentFilter)
                 .filter(order -> query.isEmpty() || searchable(order).contains(query))
+                .filter(order -> customerQuery.isEmpty() || matchCustomerName(order, customerQuery))
                 .filter(order -> withinRange(order.getCreatedAt(), createdFrom, createdTo))
                 .toList();
 
@@ -103,12 +177,9 @@ public class StoreOrderService {
         StoreOrder order = new StoreOrder();
         order.setStoreId(storeId);
         order.setOwnerPublicUserId(ownerPublicUserId);
-        applyRequest(order, request);
+        applyRequest(order, request, storeId, ownerPublicUserId);
+        order.setOrderNumber(generateOrderNumber(storeId));
         StoreOrder saved = orderRepository.save(order);
-        if (saved.getOrderNumber() == null || saved.getOrderNumber().isBlank()) {
-            saved.setOrderNumber(String.format("ORD-%05d", saved.getId()));
-            saved = orderRepository.save(saved);
-        }
         return toData(saved);
     }
 
@@ -117,7 +188,7 @@ public class StoreOrderService {
             throw new ResponseStatusException(BAD_REQUEST, "Request body is required");
         }
         StoreOrder order = require(storeId, publicOrderId);
-        applyRequest(order, request);
+        applyRequest(order, request, storeId, order.getOwnerPublicUserId());
         return toData(orderRepository.save(order));
     }
 
@@ -139,7 +210,7 @@ public class StoreOrderService {
 
     public byte[] exportCsv(String storeId, List<String> ids) {
         StringBuilder csv = new StringBuilder();
-        csv.append("Order Number,Customer,Email,Phone,Payment,Fulfillment,Items,Subtotal,Discount,Shipping,Package,Tax,Total,Channel,Courier,Tracking,Created At\n");
+        csv.append("Order Number,Customer,Email,Phone,Payment,Fulfillment,Items,Subtotal,Discount,Shipping,Package,Tax,Total,Currency Code,Currency Symbol,Channel,Courier,Tracking,Created At\n");
         for (StoreOrder order : selectedOrders(storeId, ids)) {
             csv.append(csv(order.getOrderNumber())).append(',')
                     .append(csv(order.getCustomerName())).append(',')
@@ -154,6 +225,8 @@ public class StoreOrderService {
                     .append(order.getPackageCharge()).append(',')
                     .append(order.getTaxAmount()).append(',')
                     .append(order.getTotal()).append(',')
+                    .append(csv(order.getCurrencyCode())).append(',')
+                    .append(csv(order.getCurrencySymbol())).append(',')
                     .append(csv(order.getChannel())).append(',')
                     .append(csv(order.getCourier())).append(',')
                     .append(csv(order.getTrackingNumber())).append(',')
@@ -163,56 +236,58 @@ public class StoreOrderService {
         return csv.toString().getBytes(StandardCharsets.UTF_8);
     }
 
-    public byte[] invoicePdf(String storeId, List<String> ids) {
-        List<String> lines = new ArrayList<>();
-        lines.add("Order Invoices");
-        lines.add("");
-        for (StoreOrder order : selectedOrders(storeId, ids)) {
-            lines.add((order.getOrderNumber() == null ? order.getPublicOrderId() : order.getOrderNumber())
-                    + " | " + order.getCustomerName() + " | Total: " + order.getTotal());
-            lines.add("Payment: " + order.getPaymentStatus().apiValue()
-                    + " | Fulfillment: " + order.getFulfillmentStatus().apiValue());
-            for (StoreOrderLineItem item : order.getLineItems()) {
-                lines.add("  " + item.getName() + " x " + item.getQuantity() + " @ " + item.getUnitPrice()
-                        + " = " + item.getLineTotal());
-            }
-            lines.add("Subtotal: " + order.getSubtotal() + " Discount: " + order.getDiscountAmount()
-                    + " Shipping: " + order.getShippingCharge() + " Package: " + order.getPackageCharge()
-                    + " Tax: " + order.getTaxAmount());
-            lines.add("");
-        }
-        return simplePdf(lines);
+    public byte[] invoicePdf(String storeId, List<String> ids, String templateId) {
+        List<StoreOrder> orders = selectedOrders(storeId, ids);
+        PdfTemplate template = resolveTemplate(storeId, templateId, PdfTemplateType.INVOICE);
+        return renderInvoicePdf(orders, template);
     }
 
-    public byte[] shippingLabelPdf(String storeId, List<String> ids) {
-        List<String> lines = new ArrayList<>();
-        lines.add("Shipping Labels");
-        lines.add("");
-        for (StoreOrder order : selectedOrders(storeId, ids)) {
-            lines.add("SHIP TO: " + order.getCustomerName());
-            lines.add(nullToEmpty(order.getAddressLine1()));
-            if (order.getAddressLine2() != null && !order.getAddressLine2().isBlank()) {
-                lines.add(order.getAddressLine2());
-            }
-            lines.add(String.join(
-                    ", ",
-                    nonBlank(order.getCity()),
-                    nonBlank(order.getState()),
-                    nonBlank(order.getPincode())));
-            lines.add("Phone: " + nullToEmpty(order.getPhone()));
-            lines.add("Courier: " + nullToEmpty(order.getCourier()));
-            lines.add("Tracking: " + nullToEmpty(order.getTrackingNumber()));
-            lines.add("");
-        }
-        return simplePdf(lines);
+    public byte[] shippingLabelPdf(String storeId, List<String> ids, String templateId) {
+        List<StoreOrder> orders = selectedOrders(storeId, ids);
+        PdfTemplate template = resolveTemplate(storeId, templateId, PdfTemplateType.SHIPPING_LABEL);
+        return renderShippingLabelPdf(orders, template);
     }
 
-    private void applyRequest(StoreOrder order, OrderRequest request) {
+    // --- private helpers ---------------------------------------------------
+
+    private void applyRequest(StoreOrder order, OrderRequest request, String storeId, String ownerPublicUserId) {
         String customerName = normalize(request.customerName());
-        if (customerName == null) {
-            throw new ResponseStatusException(BAD_REQUEST, "Customer name is required");
+        if (customerName == null && request.newCustomer() == null && request.customerPublicId() == null) {
+            throw new ResponseStatusException(BAD_REQUEST, "Customer name, customerPublicId, or newCustomer is required");
         }
-        order.setCustomerPublicId(normalize(request.customerPublicId()));
+
+        // Inline customer creation
+        if (request.newCustomer() != null) {
+            InlineCustomerRequest nc = request.newCustomer();
+            String firstName = normalize(nc.firstName());
+            if (firstName == null) {
+                throw new ResponseStatusException(BAD_REQUEST, "Customer first name is required");
+            }
+            CustomerRequest custReq = new CustomerRequest(
+                    firstName,
+                    normalize(nc.lastName()),
+                    normalize(nc.email()),
+                    normalize(nc.phoneCountryCode()),
+                    normalize(nc.phone()),
+                    false, false, false, false,
+                    "ACTIVE",
+                    null, null, null,
+                    null, null, null);
+            var customerData = customerService.create(storeId, ownerPublicUserId, custReq);
+            order.setCustomerPublicId(customerData.publicCustomerId());
+            if (customerName == null) {
+                customerName = (firstName + " " + nullToEmpty(normalize(nc.lastName()))).trim();
+            }
+            if (order.getEmail() == null) {
+                order.setEmail(normalize(nc.email()));
+            }
+            if (order.getPhone() == null) {
+                order.setPhone(normalize(nc.phone()));
+            }
+        } else {
+            order.setCustomerPublicId(normalize(request.customerPublicId()));
+        }
+
         order.setCustomerName(customerName);
         order.setEmail(normalize(request.email()));
         order.setPhone(normalize(request.phone()));
@@ -231,10 +306,43 @@ public class StoreOrderService {
         order.setPincode(address == null ? null : normalize(address.pincode()));
         order.setCountry(address == null ? null : normalize(address.country()));
 
+        // Currency resolution: request > store profile > defaults
+        resolveCurrency(order, request, storeId);
+
         applyDiscount(order, request.discount());
         applyTags(order, request.tags());
         applyLineItems(order, request.products());
-        recalculateTotals(order, request.shippingCharge(), request.packageCharge());
+        recalculateTotals(order, request.shippingCharge(), request.packageCharge(), storeId);
+    }
+
+    private void resolveCurrency(StoreOrder order, OrderRequest request, String storeId) {
+        String code = normalize(request.currencyCode());
+        String symbol = normalize(request.currencySymbol());
+        String country = normalize(request.currencyCountryCode());
+
+        if (code == null) {
+            storeProfileRepository.findByStoreId(storeId).ifPresent(profile -> {
+                order.setCurrencyCode(profile.getCurrencyCode());
+                order.setCurrencySymbol(resolveSymbol(profile.getCurrencyCode()));
+                order.setCurrencyCountryCode(profile.getCountryCode());
+            });
+            if (order.getCurrencyCode() == null) {
+                order.setCurrencyCode("INR");
+                order.setCurrencySymbol("₹");
+                order.setCurrencyCountryCode("IN");
+            }
+        } else {
+            order.setCurrencyCode(code);
+            order.setCurrencySymbol(symbol != null ? symbol : resolveSymbol(code));
+            order.setCurrencyCountryCode(country != null ? country : "IN");
+        }
+    }
+
+    private String resolveSymbol(String currencyCode) {
+        if (currencyCode == null) {
+            return "₹";
+        }
+        return CURRENCY_SYMBOLS.getOrDefault(currencyCode.toUpperCase(Locale.ROOT), currencyCode);
     }
 
     private void applyDiscount(StoreOrder order, OrderDiscountRequest discount) {
@@ -303,7 +411,7 @@ public class StoreOrderService {
             item.setUnitPrice(money(price));
             item.setLineTotal(money(price.multiply(BigDecimal.valueOf(quantity))));
             item.setTaxable(request.taxable() == null || request.taxable());
-            item.setTaxRate(request.taxRate() == null ? DEFAULT_TAX_RATE : request.taxRate());
+            item.setTaxRate(request.taxRate() == null ? getDefaultTaxRate(order.getStoreId()) : request.taxRate());
             item.setImage(normalize(request.image()));
             order.getLineItems().add(item);
         }
@@ -312,7 +420,8 @@ public class StoreOrderService {
         }
     }
 
-    private void recalculateTotals(StoreOrder order, BigDecimal requestedShipping, BigDecimal requestedPackage) {
+    private void recalculateTotals(StoreOrder order, BigDecimal requestedShipping, BigDecimal requestedPackage, String storeId) {
+        OrderSettings settings = getSettings(storeId);
         BigDecimal subtotal = order.getLineItems().stream()
                 .map(StoreOrderLineItem::getLineTotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -334,11 +443,13 @@ public class StoreOrderService {
                             .divide(subtotal, 8, RoundingMode.HALF_UP)
                             .multiply(discountAmount);
             BigDecimal taxableBase = item.getLineTotal().subtract(lineDiscountShare).max(BigDecimal.ZERO);
-            BigDecimal rate = item.getTaxRate() == null ? DEFAULT_TAX_RATE : item.getTaxRate();
+            BigDecimal rate = item.getTaxRate() == null ? settings.getDefaultTaxRate() : item.getTaxRate();
             tax = tax.add(taxableBase.multiply(rate).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP));
         }
-        BigDecimal shipping = requestedShipping == null ? defaultShipping(discountedSubtotal) : requestedShipping;
-        BigDecimal packageCharge = requestedPackage == null ? BigDecimal.ZERO : requestedPackage;
+        BigDecimal shipping = requestedShipping == null
+                ? defaultShipping(discountedSubtotal, settings)
+                : requestedShipping;
+        BigDecimal packageCharge = requestedPackage == null ? settings.getDefaultPackageCharge() : requestedPackage;
         if (shipping.signum() < 0 || packageCharge.signum() < 0) {
             throw new ResponseStatusException(BAD_REQUEST, "Shipping and package charges cannot be negative");
         }
@@ -349,6 +460,269 @@ public class StoreOrderService {
         order.setTaxAmount(money(tax));
         order.setTotal(money(discountedSubtotal.add(shipping).add(packageCharge).add(tax)));
     }
+
+    /**
+     * Allocates the next order number for the store's current period. The counter row is
+     * locked for update so concurrent creates serialise and never share a number; the
+     * counter restarts at 1 each financial year when {@code financialYearReset} is on.
+     */
+    private String generateOrderNumber(String storeId) {
+        OrderSettings settings = getSettings(storeId);
+        Instant now = Instant.now();
+        String periodKey = OrderNumberFormatter.periodKey(settings, now);
+        OrderNumberSequence sequence = sequenceRepository
+                .lockByStoreIdAndPeriodKey(storeId, periodKey)
+                .orElseGet(() -> {
+                    OrderNumberSequence fresh = new OrderNumberSequence();
+                    fresh.setStoreId(storeId);
+                    fresh.setPeriodKey(periodKey);
+                    fresh.setLastValue(0L);
+                    return fresh;
+                });
+        long next = sequence.getLastValue() + 1;
+        sequence.setLastValue(next);
+        sequenceRepository.save(sequence);
+        return OrderNumberFormatter.format(settings, now, next);
+    }
+
+    private OrderSettings getSettings(String storeId) {
+        return settingsRepository.findByStoreId(storeId).orElseGet(() -> {
+            OrderSettings defaults = new OrderSettings();
+            defaults.setStoreId(storeId);
+            return defaults;
+        });
+    }
+
+    private BigDecimal getDefaultTaxRate(String storeId) {
+        return getSettings(storeId).getDefaultTaxRate();
+    }
+
+    private PdfTemplate resolveTemplate(String storeId, String templateId, PdfTemplateType type) {
+        if (templateId != null && !templateId.isBlank()) {
+            return templateRepository.findByStoreIdAndPublicTemplateId(storeId, templateId)
+                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Template not found"));
+        }
+        PdfTemplate defaultTemplate = templateRepository.findByStoreIdAndTypeAndDefaultTemplateTrue(storeId, type)
+                .orElse(null);
+        if (defaultTemplate != null) {
+            return defaultTemplate;
+        }
+        List<PdfTemplate> templates = templateRepository.findByStoreIdAndTypeOrderByCreatedAtDesc(storeId, type);
+        return templates.isEmpty() ? null : templates.get(0);
+    }
+
+    // --- PDF rendering ------------------------------------------------------
+
+    private byte[] renderInvoicePdf(List<StoreOrder> orders, PdfTemplate template) {
+        String accentColor = "#000000";
+        boolean showBorders = true;
+        boolean showGrid = true;
+        String style = "classic";
+
+        if (template != null && template.getLayoutConfig() != null) {
+            accentColor = extractJsonString(template.getLayoutConfig(), "accentColor", "#000000");
+            showBorders = extractJsonBool(template.getLayoutConfig(), "showBorders", true);
+            showGrid = extractJsonBool(template.getLayoutConfig(), "showGrid", true);
+            style = extractJsonString(template.getLayoutConfig(), "style", "classic");
+        }
+
+        StringBuilder content = new StringBuilder();
+        int y = 760;
+
+        // Header
+        content.append("BT /F1 18 Tf ").append(accentColorRgb(accentColor)).append(" 50 ").append(y).append(" Td ");
+        content.append("(Order Invoices) Tj ET ");
+        y -= 30;
+
+        for (StoreOrder order : orders) {
+            if (y < 100) {
+                break;
+            }
+
+            // Order number and date
+            content.append("BT /F1 12 Tf 50 ").append(y).append(" Td ");
+            content.append("(").append(pdf(order.getOrderNumber() == null ? order.getPublicOrderId() : order.getOrderNumber())).append(") Tj ET ");
+            y -= 16;
+
+            // Customer info
+            content.append("BT /F1 10 Tf 50 ").append(y).append(" Td ");
+            content.append("(").append(pdf(order.getCustomerName())).append(") Tj ET ");
+            y -= 14;
+
+            // Currency-aware total
+            String currencySymbol = order.getCurrencySymbol() != null ? order.getCurrencySymbol() : "₹";
+            content.append("BT /F1 10 Tf 50 ").append(y).append(" Td ");
+            content.append("(").append(pdf("Total: " + currencySymbol + order.getTotal())).append(") Tj ET ");
+            y -= 14;
+
+            // Payment and fulfillment
+            content.append("BT /F1 10 Tf 50 ").append(y).append(" Td ");
+            content.append("(").append(pdf("Payment: " + order.getPaymentStatus().apiValue()
+                    + "  |  Fulfillment: " + order.getFulfillmentStatus().apiValue())).append(") Tj ET ");
+            y -= 16;
+
+            // Line items
+            if (showGrid) {
+                content.append("BT /F1 8 Tf 60 ").append(y).append(" Td ");
+                content.append("(Product                                                          Qty    Price    Total) Tj ET ");
+                y -= 12;
+
+                for (StoreOrderLineItem item : order.getLineItems()) {
+                    if (y < 100) break;
+                    String line = String.format("%-60s %4d  %s%8s  %s%8s",
+                            truncate(item.getName(), 60),
+                            item.getQuantity(),
+                            currencySymbol,
+                            item.getUnitPrice(),
+                            currencySymbol,
+                            item.getLineTotal());
+                    content.append("BT /F1 8 Tf 60 ").append(y).append(" Td ");
+                    content.append("(").append(pdf(line)).append(") Tj ET ");
+                    y -= 11;
+                }
+            }
+
+            // Totals breakdown
+            y -= 4;
+            content.append("BT /F1 9 Tf 50 ").append(y).append(" Td ");
+            content.append("(").append(pdf("Subtotal: " + currencySymbol + order.getSubtotal()
+                    + "  Discount: " + currencySymbol + order.getDiscountAmount()
+                    + "  Shipping: " + currencySymbol + order.getShippingCharge()
+                    + "  Package: " + currencySymbol + order.getPackageCharge()
+                    + "  Tax: " + currencySymbol + order.getTaxAmount())).append(") Tj ET ");
+            y -= 20;
+
+            if (showBorders) {
+                content.append("0.5 0.5 0.5 rg 50 ").append(y).append(" 512 0 re S ");
+                y -= 8;
+            }
+        }
+
+        return buildPdf(content.toString());
+    }
+
+    private byte[] renderShippingLabelPdf(List<StoreOrder> orders, PdfTemplate template) {
+        StringBuilder content = new StringBuilder();
+        int y = 760;
+
+        content.append("BT /F1 18 Tf 50 ").append(y).append(" Td ");
+        content.append("(Shipping Labels) Tj ET ");
+        y -= 30;
+
+        for (StoreOrder order : orders) {
+            if (y < 120) {
+                break;
+            }
+
+            // Ship To header
+            content.append("BT /F1 12 Tf 50 ").append(y).append(" Td ");
+            content.append("(SHIP TO: ").append(pdf(order.getCustomerName())).append(") Tj ET ");
+            y -= 16;
+
+            content.append("BT /F1 10 Tf 50 ").append(y).append(" Td ");
+            content.append("(").append(pdf(nullToEmpty(order.getAddressLine1()))).append(") Tj ET ");
+            y -= 14;
+
+            if (order.getAddressLine2() != null && !order.getAddressLine2().isBlank()) {
+                content.append("BT /F1 10 Tf 50 ").append(y).append(" Td ");
+                content.append("(").append(pdf(order.getAddressLine2())).append(") Tj ET ");
+                y -= 14;
+            }
+
+            String cityLine = String.join(
+                    ", ",
+                    nonBlank(order.getCity()),
+                    nonBlank(order.getState()),
+                    nonBlank(order.getPincode()));
+            content.append("BT /F1 10 Tf 50 ").append(y).append(" Td ");
+            content.append("(").append(pdf(cityLine)).append(") Tj ET ");
+            y -= 14;
+
+            content.append("BT /F1 10 Tf 50 ").append(y).append(" Td ");
+            content.append("(Phone: ").append(pdf(nullToEmpty(order.getPhone()))).append(") Tj ET ");
+            y -= 14;
+
+            content.append("BT /F1 10 Tf 50 ").append(y).append(" Td ");
+            content.append("(Courier: ").append(pdf(nullToEmpty(order.getCourier()))).append(") Tj ET ");
+            y -= 14;
+
+            content.append("BT /F1 10 Tf 50 ").append(y).append(" Td ");
+            content.append("(Tracking: ").append(pdf(nullToEmpty(order.getTrackingNumber()))).append(") Tj ET ");
+            y -= 20;
+        }
+
+        return buildPdf(content.toString());
+    }
+
+    private byte[] buildPdf(String contentStream) {
+        byte[] stream = contentStream.getBytes(StandardCharsets.UTF_8);
+
+        List<String> objects = List.of(
+                "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
+                "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n",
+                "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj\n",
+                "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n",
+                "5 0 obj << /Length " + stream.length + " >> stream\n" + contentStream + "\nendstream endobj\n");
+        StringBuilder pdf = new StringBuilder("%PDF-1.4\n");
+        List<Integer> offsets = new ArrayList<>();
+        for (String object : objects) {
+            offsets.add(pdf.toString().getBytes(StandardCharsets.UTF_8).length);
+            pdf.append(object);
+        }
+        int xrefOffset = pdf.toString().getBytes(StandardCharsets.UTF_8).length;
+        pdf.append("xref\n0 6\n0000000000 65535 f \n");
+        for (Integer offset : offsets) {
+            pdf.append(String.format("%010d 00000 n \n", offset));
+        }
+        pdf.append("trailer << /Size 6 /Root 1 0 R >>\nstartxref\n")
+                .append(xrefOffset)
+                .append("\n%%EOF");
+        return pdf.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private String accentColorRgb(String hex) {
+        if (hex == null || hex.length() < 7) {
+            return "0 0 0 rg";
+        }
+        try {
+            int r = Integer.parseInt(hex.substring(1, 3), 16);
+            int g = Integer.parseInt(hex.substring(3, 5), 16);
+            int b = Integer.parseInt(hex.substring(5, 7), 16);
+            return String.format(Locale.ROOT, "%.3f %.3f %.3f rg", r / 255.0, g / 255.0, b / 255.0);
+        } catch (Exception e) {
+            return "0 0 0 rg";
+        }
+    }
+
+    private static String extractJsonString(String json, String key, String defaultValue) {
+        String search = "\"" + key + "\"";
+        int idx = json.indexOf(search);
+        if (idx < 0) return defaultValue;
+        int colonIdx = json.indexOf(':', idx + search.length());
+        if (colonIdx < 0) return defaultValue;
+        int quoteStart = json.indexOf('"', colonIdx + 1);
+        if (quoteStart < 0) return defaultValue;
+        int quoteEnd = json.indexOf('"', quoteStart + 1);
+        if (quoteEnd < 0) return defaultValue;
+        return json.substring(quoteStart + 1, quoteEnd);
+    }
+
+    private static boolean extractJsonBool(String json, String key, boolean defaultValue) {
+        String search = "\"" + key + "\"";
+        int idx = json.indexOf(search);
+        if (idx < 0) return defaultValue;
+        int colonIdx = json.indexOf(':', idx + search.length());
+        if (colonIdx < 0) return defaultValue;
+        String after = json.substring(colonIdx + 1).trim();
+        return after.startsWith("true");
+    }
+
+    private static String truncate(String value, int max) {
+        if (value == null) return "";
+        return value.length() <= max ? value : value.substring(0, max - 3) + "...";
+    }
+
+    // --- data mapping -------------------------------------------------------
 
     private StoreOrder require(String storeId, String publicOrderId) {
         return orderRepository.findByStoreIdAndPublicOrderId(storeId, publicOrderId)
@@ -392,7 +766,10 @@ public class StoreOrderService {
                 order.getTrackingNumber(),
                 timeline(order),
                 order.getNotes(),
-                toAddress(order));
+                toAddress(order),
+                order.getCurrencyCode(),
+                order.getCurrencySymbol(),
+                order.getCurrencyCountryCode());
     }
 
     private OrderSummaryData toSummary(StoreOrder order) {
@@ -419,7 +796,10 @@ public class StoreOrderService {
                 order.getCourier(),
                 order.getTrackingNumber(),
                 order.getNotes(),
-                toAddress(order));
+                toAddress(order),
+                order.getCurrencyCode(),
+                order.getCurrencySymbol(),
+                order.getCurrencyCountryCode());
     }
 
     private OrderLineItemData toLineItemData(StoreOrderLineItem item) {
@@ -479,11 +859,16 @@ public class StoreOrderService {
         return String.join(" ", parts.stream().map(StoreOrderService::nullToEmpty).toList()).toLowerCase(Locale.ROOT);
     }
 
-    private static BigDecimal defaultShipping(BigDecimal discountedSubtotal) {
-        if (discountedSubtotal.signum() <= 0 || discountedSubtotal.compareTo(FREE_SHIPPING_THRESHOLD) > 0) {
+    private static boolean matchCustomerName(StoreOrder order, String query) {
+        String name = order.getCustomerName();
+        return name != null && name.toLowerCase(Locale.ROOT).contains(query);
+    }
+
+    private static BigDecimal defaultShipping(BigDecimal discountedSubtotal, OrderSettings settings) {
+        if (discountedSubtotal.signum() <= 0 || discountedSubtotal.compareTo(settings.getFreeShippingThreshold()) > 0) {
             return BigDecimal.ZERO;
         }
-        return DEFAULT_SHIPPING_CHARGE;
+        return settings.getDefaultShippingCharge();
     }
 
     private static BigDecimal money(BigDecimal value) {
@@ -588,47 +973,6 @@ public class StoreOrderService {
     private static String csv(String value) {
         String safe = nullToEmpty(value).replace("\"", "\"\"");
         return "\"" + safe + "\"";
-    }
-
-    private static byte[] simplePdf(List<String> lines) {
-        StringBuilder content = new StringBuilder();
-        content.append("BT /F1 12 Tf 50 780 Td ");
-        int count = 0;
-        for (String line : lines) {
-            if (count > 0) {
-                content.append("0 -16 Td ");
-            }
-            if (count > 45) {
-                content.append("(...) Tj ");
-                break;
-            }
-            content.append('(').append(pdf(line)).append(") Tj ");
-            count++;
-        }
-        content.append("ET");
-        byte[] stream = content.toString().getBytes(StandardCharsets.UTF_8);
-
-        List<String> objects = List.of(
-                "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
-                "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n",
-                "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj\n",
-                "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n",
-                "5 0 obj << /Length " + stream.length + " >> stream\n" + content + "\nendstream endobj\n");
-        StringBuilder pdf = new StringBuilder("%PDF-1.4\n");
-        List<Integer> offsets = new ArrayList<>();
-        for (String object : objects) {
-            offsets.add(pdf.toString().getBytes(StandardCharsets.UTF_8).length);
-            pdf.append(object);
-        }
-        int xrefOffset = pdf.toString().getBytes(StandardCharsets.UTF_8).length;
-        pdf.append("xref\n0 6\n0000000000 65535 f \n");
-        for (Integer offset : offsets) {
-            pdf.append(String.format("%010d 00000 n \n", offset));
-        }
-        pdf.append("trailer << /Size 6 /Root 1 0 R >>\nstartxref\n")
-                .append(xrefOffset)
-                .append("\n%%EOF");
-        return pdf.toString().getBytes(StandardCharsets.UTF_8);
     }
 
     private static String pdf(String value) {

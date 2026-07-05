@@ -9,7 +9,10 @@ import com.ecommerce.order.OrderExportRequest;
 import com.ecommerce.order.OrderListData;
 import com.ecommerce.order.OrderOverviewData;
 import com.ecommerce.order.OrderRequest;
+import com.ecommerce.order.OrderSettingsData;
+import com.ecommerce.order.OrderSettingsRequest;
 import com.ecommerce.order.StoreOrderService;
+import com.ecommerce.order.StoreOrderSettingsService;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -34,12 +37,19 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1")
 public class OrderController {
     private final StoreOrderService orderService;
+    private final StoreOrderSettingsService settingsService;
     private final CurrentAccountService currentAccountService;
 
-    public OrderController(StoreOrderService orderService, CurrentAccountService currentAccountService) {
+    public OrderController(
+            StoreOrderService orderService,
+            StoreOrderSettingsService settingsService,
+            CurrentAccountService currentAccountService) {
         this.orderService = orderService;
+        this.settingsService = settingsService;
         this.currentAccountService = currentAccountService;
     }
+
+    // --- Order CRUD ---------------------------------------------------------
 
     @GetMapping("/{audience}/auth/orders")
     public ResponseEntity<Map<String, Object>> list(
@@ -50,11 +60,12 @@ public class OrderController {
             @RequestParam(required = false) String fulfillment,
             @RequestParam(required = false) String dateFrom,
             @RequestParam(required = false) String dateTo,
+            @RequestParam(required = false) String customerName,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         StoreScope scope = resolveScope(authorization, audience);
-        OrderListData data =
-                orderService.list(scope.storeId(), search, payment, fulfillment, dateFrom, dateTo, page, size);
+        OrderListData data = orderService.list(
+                scope.storeId(), search, payment, fulfillment, dateFrom, dateTo, customerName, page, size);
         return ok("Orders loaded", data);
     }
 
@@ -108,6 +119,8 @@ public class OrderController {
         return ok("Order deleted", null);
     }
 
+    // --- Bulk actions -------------------------------------------------------
+
     @PostMapping("/{audience}/auth/orders/bulk-delete")
     public ResponseEntity<Map<String, Object>> bulkDelete(
             @PathVariable String audience,
@@ -130,13 +143,17 @@ public class OrderController {
         return download(data, MediaType.parseMediaType("text/csv"), "orders-" + Instant.now().toEpochMilli() + ".csv");
     }
 
+    // --- Invoice PDF --------------------------------------------------------
+
     @PostMapping("/{audience}/auth/orders/invoices/download")
     public ResponseEntity<byte[]> downloadInvoices(
             @PathVariable String audience,
             @RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestBody(required = false) OrderExportRequest request) {
+            @RequestBody(required = false) OrderExportRequest request,
+            @RequestParam(required = false) String templateId) {
         StoreScope scope = resolveScope(authorization, audience);
-        byte[] data = orderService.invoicePdf(scope.storeId(), request == null ? null : request.ids());
+        byte[] data = orderService.invoicePdf(
+                scope.storeId(), request == null ? null : request.ids(), templateId);
         return download(data, MediaType.APPLICATION_PDF, "order-invoices.pdf");
     }
 
@@ -144,19 +161,24 @@ public class OrderController {
     public ResponseEntity<byte[]> downloadInvoice(
             @PathVariable String audience,
             @PathVariable String publicOrderId,
-            @RequestHeader(value = "Authorization", required = false) String authorization) {
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(required = false) String templateId) {
         StoreScope scope = resolveScope(authorization, audience);
-        byte[] data = orderService.invoicePdf(scope.storeId(), java.util.List.of(publicOrderId));
+        byte[] data = orderService.invoicePdf(scope.storeId(), java.util.List.of(publicOrderId), templateId);
         return download(data, MediaType.APPLICATION_PDF, publicOrderId + "-invoice.pdf");
     }
+
+    // --- Shipping label PDF -------------------------------------------------
 
     @PostMapping("/{audience}/auth/orders/shipping-labels/download")
     public ResponseEntity<byte[]> downloadShippingLabels(
             @PathVariable String audience,
             @RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestBody(required = false) OrderExportRequest request) {
+            @RequestBody(required = false) OrderExportRequest request,
+            @RequestParam(required = false) String templateId) {
         StoreScope scope = resolveScope(authorization, audience);
-        byte[] data = orderService.shippingLabelPdf(scope.storeId(), request == null ? null : request.ids());
+        byte[] data = orderService.shippingLabelPdf(
+                scope.storeId(), request == null ? null : request.ids(), templateId);
         return download(data, MediaType.APPLICATION_PDF, "shipping-labels.pdf");
     }
 
@@ -164,11 +186,35 @@ public class OrderController {
     public ResponseEntity<byte[]> downloadShippingLabel(
             @PathVariable String audience,
             @PathVariable String publicOrderId,
-            @RequestHeader(value = "Authorization", required = false) String authorization) {
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(required = false) String templateId) {
         StoreScope scope = resolveScope(authorization, audience);
-        byte[] data = orderService.shippingLabelPdf(scope.storeId(), java.util.List.of(publicOrderId));
+        byte[] data = orderService.shippingLabelPdf(scope.storeId(), java.util.List.of(publicOrderId), templateId);
         return download(data, MediaType.APPLICATION_PDF, publicOrderId + "-shipping-label.pdf");
     }
+
+    // --- Order Settings -----------------------------------------------------
+
+    @GetMapping("/{audience}/auth/orders/settings")
+    public ResponseEntity<Map<String, Object>> getSettings(
+            @PathVariable String audience,
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        StoreScope scope = resolveScope(authorization, audience);
+        OrderSettingsData data = settingsService.get(scope.storeId());
+        return ok("Order settings loaded", data);
+    }
+
+    @PostMapping("/{audience}/auth/orders/settings")
+    public ResponseEntity<Map<String, Object>> saveSettings(
+            @PathVariable String audience,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody OrderSettingsRequest request) {
+        StoreScope scope = resolveScope(authorization, audience);
+        OrderSettingsData data = settingsService.save(scope.storeId(), scope.ownerPublicUserId(), request);
+        return ok("Order settings saved", data);
+    }
+
+    // --- Helpers ------------------------------------------------------------
 
     private StoreScope resolveScope(String authorization, String audience) {
         CurrentAccountData currentAccount = currentAccountService.resolveCurrentAccount(authorization);

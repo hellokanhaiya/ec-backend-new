@@ -31,4 +31,7 @@ public record OrderData(
         String trackingNumber,
         List<OrderTimelineData> timeline,
         String notes,
-        OrderAddressData address) {}
+        OrderAddressData address,
+        String currencyCode,
+        String currencySymbol,
+        String currencyCountryCode) {}

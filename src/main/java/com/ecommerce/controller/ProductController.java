@@ -21,7 +21,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -124,7 +123,7 @@ public class ProductController {
         return ok("Product created", data);
     }
 
-    @PostMapping(value = "/{audience}/auth/products/media", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = "/{audience}/auth/products/media")
     public ResponseEntity<Map<String, Object>> uploadMedia(
             @PathVariable String audience,
             @RequestHeader(value = "Authorization", required = false) String authorization,

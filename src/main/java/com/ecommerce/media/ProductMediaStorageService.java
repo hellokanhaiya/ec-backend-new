@@ -154,22 +154,32 @@ public class ProductMediaStorageService {
     public void deleteProductImagesAsync(String storageFolderId, String legacyStorageFolderId, Set<String> urls) {
         Set<String> storageFolderIds = storageFolderIds(storageFolderId, legacyStorageFolderId);
         if (urls == null || urls.isEmpty()) {
+            log.debug("deleteProductImagesAsync: no urls to delete");
             return;
         }
 
+        log.info("deleteProductImagesAsync: processing {} urls for folder {}", urls.size(), storageFolderId);
         Set<String> objectNames = new LinkedHashSet<>();
         for (String url : urls) {
-            objectNameFromUrl(storageFolderIds, url).ifPresent(objectNames::add);
+            Optional<String> objectName = objectNameFromUrl(storageFolderIds, url);
+            if (objectName.isPresent()) {
+                objectNames.add(objectName.get());
+            } else {
+                log.debug("deleteProductImagesAsync: skipping non-cloud url: {}", url);
+            }
         }
 
+        log.info("deleteProductImagesAsync: deleting {} objects from bucket {}", objectNames.size(), publicBucket);
         for (String objectName : objectNames) {
             try {
                 boolean deleted = storage().delete(BlobId.of(publicBucket, objectName));
-                if (!deleted) {
-                    log.debug("Cloud media already absent: {}", objectName);
+                if (deleted) {
+                    log.debug("deleteProductImagesAsync: deleted {}", objectName);
+                } else {
+                    log.debug("deleteProductImagesAsync: cloud media already absent: {}", objectName);
                 }
             } catch (RuntimeException ex) {
-                log.warn("Cloud media cleanup failed for {}", objectName, ex);
+                log.warn("deleteProductImagesAsync: cloud media cleanup failed for {}", objectName, ex);
             }
         }
     }
