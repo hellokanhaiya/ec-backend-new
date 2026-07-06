@@ -101,9 +101,6 @@ public class Product {
     @Column(name = "compare_at_price", precision = 15, scale = 2)
     private BigDecimal compareAtPrice;
 
-    @Column(name = "cost_per_item", precision = 15, scale = 2)
-    private BigDecimal costPerItem;
-
     // --- Inventory ----------------------------------------------------------
     @Column(name = "sku", length = 128)
     private String sku;
@@ -124,9 +121,6 @@ public class Product {
     @Column(name = "weight", precision = 12, scale = 3)
     private BigDecimal weight;
 
-    @Column(name = "weight_unit", length = 8)
-    private String weightUnit;
-
     @Column(name = "length", precision = 12, scale = 3)
     private BigDecimal length;
 
@@ -135,9 +129,6 @@ public class Product {
 
     @Column(name = "height", precision = 12, scale = 3)
     private BigDecimal height;
-
-    @Column(name = "dimension_unit", length = 8)
-    private String dimensionUnit;
 
     @Column(name = "country_of_origin", length = 8)
     private String countryOfOrigin;

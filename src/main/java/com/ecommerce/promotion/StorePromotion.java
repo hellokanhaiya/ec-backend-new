@@ -69,7 +69,7 @@ public class StorePromotion {
     @Column(name = "customer_segment", length = 255)
     private String customerSegment;
 
-    @Column(name = "customer_ids", length = 4000)
+    @Column(name = "customer_ids", columnDefinition = "TEXT")
     private String customerIds;
 
     @Column(name = "minimum_requirement", length = 24)
@@ -102,7 +102,7 @@ public class StorePromotion {
     @Column(name = "allow_shipping", nullable = false)
     private boolean allowShipping = true;
 
-    @Column(name = "tags", length = 4000)
+    @Column(name = "tags", columnDefinition = "TEXT")
     private String tags;
 
     @Column(name = "starts_at")
@@ -114,19 +114,19 @@ public class StorePromotion {
     @Column(name = "primary_target_mode", length = 24)
     private String primaryTargetMode = "products";
 
-    @Column(name = "primary_target_ids", length = 4000)
+    @Column(name = "primary_target_ids", columnDefinition = "TEXT")
     private String primaryTargetIds;
 
     @Column(name = "buy_target_mode", length = 24)
     private String buyTargetMode = "products";
 
-    @Column(name = "buy_target_ids", length = 4000)
+    @Column(name = "buy_target_ids", columnDefinition = "TEXT")
     private String buyTargetIds;
 
     @Column(name = "get_target_mode", length = 24)
     private String getTargetMode = "products";
 
-    @Column(name = "get_target_ids", length = 4000)
+    @Column(name = "get_target_ids", columnDefinition = "TEXT")
     private String getTargetIds;
 
     @Column(name = "buy_quantity")

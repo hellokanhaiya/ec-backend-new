@@ -341,7 +341,6 @@ public class StoreProductService {
         }
         product.setPrice(request.price());
         product.setCompareAtPrice(request.compareAtPrice());
-        product.setCostPerItem(request.costPerItem());
 
         resolveSku(product, request, storeId);
         resolveBarcode(product, request);
@@ -350,11 +349,9 @@ public class StoreProductService {
 
         product.setRequiresShipping(request.requiresShipping() == null || request.requiresShipping());
         product.setWeight(request.weight());
-        product.setWeightUnit(normalize(request.weightUnit()));
         product.setLength(request.length());
         product.setWidth(request.width());
         product.setHeight(request.height());
-        product.setDimensionUnit(normalize(request.dimensionUnit()));
         product.setCountryOfOrigin(normalize(request.countryOfOrigin()));
 
         product.setTaxable(request.taxable() == null || request.taxable());
@@ -450,18 +447,15 @@ public class StoreProductService {
                 product.getVendor(),
                 product.getPrice(),
                 product.getCompareAtPrice(),
-                product.getCostPerItem(),
                 product.getSku(),
                 product.getBarcode(),
                 product.getStock(),
                 product.isTrackInventory(),
                 product.isRequiresShipping(),
                 product.getWeight(),
-                product.getWeightUnit(),
                 product.getLength(),
                 product.getWidth(),
                 product.getHeight(),
-                product.getDimensionUnit(),
                 product.getCountryOfOrigin(),
                 product.isTaxable(),
                 product.getHsnCode(),
