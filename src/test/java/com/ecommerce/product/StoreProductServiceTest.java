@@ -71,9 +71,8 @@ class StoreProductServiceTest {
         return new ProductRequest(
                 title, slug, null, null, null, null,
                 category, categoryPath, categoryPublicId, null,
-                price, null, null, sku, barcode, null,
-                null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null,
+                price, null, null, sku, barcode,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
                 createRedirect, List.of(), List.of());
     }
 
@@ -81,9 +80,8 @@ class StoreProductServiceTest {
         return new ProductRequest(
                 title, null, null, null, null, null,
                 null, null, null, null,
-                TEN, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null,
+                TEN, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
                 null, List.of(), images);
     }
 

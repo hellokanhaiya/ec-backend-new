@@ -56,7 +56,7 @@ class StoreInventoryServiceTest {
     void seedsDefaultWarehouseAndBackfillsProductStock() {
         Product product = saveProduct("Kurta", "SKU-1", 25);
 
-        var list = inventoryService.list(STORE, OWNER, null, null, 1, 0);
+        var list = inventoryService.list(STORE, OWNER, null, null, 1, 0, null);
 
         assertThat(warehouseRepository.countByStoreId(STORE)).isEqualTo(1);
         assertThat(list.warehouses()).hasSize(1);

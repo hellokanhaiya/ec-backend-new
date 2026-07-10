@@ -7,9 +7,12 @@ import com.ecommerce.product.Product;
 import com.ecommerce.product.ProductImage;
 import com.ecommerce.product.ProductRepository;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,7 +46,13 @@ public class StoreInventoryService {
     // --- listing -----------------------------------------------------------
 
     public InventoryListData list(
-            String storeId, String ownerPublicUserId, String search, String warehouseFilter, int page, int size) {
+            String storeId,
+            String ownerPublicUserId,
+            String search,
+            String warehouseFilter,
+            int page,
+            int size,
+            String skus) {
         warehouseService.ensureSeeded(storeId, ownerPublicUserId);
         List<Warehouse> warehouses = warehouseRepository.findByStoreIdOrderByPriorityAscCreatedAtAsc(storeId);
         Map<String, Warehouse> warehouseById =
@@ -75,9 +84,20 @@ public class StoreInventoryService {
         Map<String, List<InventoryLevel>> levelsByProduct = inventoryLevelRepository.findByStoreId(storeId).stream()
                 .collect(Collectors.groupingBy(InventoryLevel::getProductPublicId));
 
+        final Set<String> skuFilter;
+        if (skus != null && !skus.isBlank()) {
+            skuFilter = Arrays.stream(skus.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .collect(Collectors.toSet());
+        } else {
+            skuFilter = null;
+        }
+
         String query = search == null ? "" : search.trim().toLowerCase(Locale.ROOT);
         List<Product> products = productRepository.findByStoreIdOrderByCreatedAtDesc(storeId).stream()
                 .filter(p -> query.isEmpty() || searchable(p).contains(query))
+                .filter(p -> skuFilter == null || skuFilter.contains(nullToEmpty(p.getSku())))
                 .toList();
 
         long total = products.size();

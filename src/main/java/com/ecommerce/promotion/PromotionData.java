@@ -5,7 +5,8 @@ import java.time.Instant;
 import java.util.List;
 
 public record PromotionData(
-        String id,
+        long id,
+        String publicPromotionId,
         String name,
         String code,
         String method,

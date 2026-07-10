@@ -145,6 +145,31 @@ public class ProductMediaStorageService {
         }
     }
 
+    /**
+     * Upload a generated export file (e.g. a CSV) to the store's cloud folder and
+     * return a public, downloadable URL. Content-Disposition is set to {@code
+     * attachment} so browsers download rather than render it.
+     */
+    public String uploadExportFile(String storageFolderId, String fileName, String contentType, byte[] bytes) {
+        String cleanFolder = requireStorageFolderId(storageFolderId);
+        String safeName = (fileName == null || fileName.isBlank())
+                ? "export.csv"
+                : fileName.trim().replaceAll("[^A-Za-z0-9._-]", "_");
+        String objectName = cleanFolder + "/exports/" + System.currentTimeMillis() + "-" + safeName;
+        String type = (contentType == null || contentType.isBlank()) ? "text/csv" : contentType;
+        BlobInfo blobInfo = BlobInfo.newBuilder(BlobId.of(publicBucket, objectName))
+                .setContentType(type)
+                .setContentDisposition("attachment; filename=\"" + safeName + "\"")
+                .build();
+        try {
+            storage().create(blobInfo, bytes);
+        } catch (StorageException ex) {
+            throw new ResponseStatusException(
+                    INTERNAL_SERVER_ERROR, "Unable to upload export file: " + storageErrorMessage(ex), ex);
+        }
+        return publicBaseUrl + "/" + publicBucket + "/" + objectName;
+    }
+
     @Async
     public void deleteProductImagesAsync(String storageFolderId, Set<String> urls) {
         deleteProductImagesAsync(storageFolderId, null, urls);

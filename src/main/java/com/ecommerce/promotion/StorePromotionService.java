@@ -556,6 +556,7 @@ public class StorePromotionService {
 
     private PromotionData toData(StorePromotion promotion) {
         return new PromotionData(
+                promotion.getId(),
                 promotion.getPublicPromotionId(),
                 promotion.getName(),
                 promotion.getCode(),

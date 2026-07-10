@@ -101,6 +101,9 @@ public class Product {
     @Column(name = "compare_at_price", precision = 15, scale = 2)
     private BigDecimal compareAtPrice;
 
+    @Column(name = "cost_per_item", precision = 15, scale = 2)
+    private BigDecimal costPerItem;
+
     // --- Inventory ----------------------------------------------------------
     @Column(name = "sku", length = 128)
     private String sku;

@@ -39,10 +39,11 @@ public class InventoryController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String warehouse,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "0") int size) {
+            @RequestParam(defaultValue = "0") int size,
+            @RequestParam(required = false) String skus) {
         StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.PRODUCTS_INVENTORY, AccessLevel.VIEW);
         InventoryListData data =
-                inventoryService.list(scope.storeId(), scope.ownerPublicUserId(), search, warehouse, page, size);
+                inventoryService.list(scope.storeId(), scope.ownerPublicUserId(), search, warehouse, page, size, skus);
         return ok("Inventory loaded", data);
     }
 

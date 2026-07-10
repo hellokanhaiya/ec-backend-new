@@ -1,6 +1,7 @@
 package com.ecommerce.customer;
 
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
+import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 import com.ecommerce.tag.StoreTagService;
@@ -85,6 +86,10 @@ public class StoreCustomerService {
         if (request == null) {
             throw new ResponseStatusException(BAD_REQUEST, "Request body is required");
         }
+        // Enforce the same required/format rules as the create screen, then reject
+        // a customer whose email or phone already exists in this store.
+        validateCustomerRequest(request);
+        assertUniqueContact(storeId, request.email(), request.phone(), null);
         Customer customer = new Customer();
         customer.setStoreId(storeId);
         customer.setOwnerPublicUserId(ownerPublicUserId);
@@ -103,8 +108,96 @@ public class StoreCustomerService {
             throw new ResponseStatusException(BAD_REQUEST, "Request body is required");
         }
         Customer customer = require(storeId, publicCustomerId);
+        validateCustomerRequest(request);
+        // Allow the customer to keep its own email/phone, but not collide with another.
+        assertUniqueContact(storeId, request.email(), request.phone(), customer.getId());
         applyRequest(customer, request, storeId);
         return toData(customerRepository.save(customer));
+    }
+
+    /**
+     * Server-side mirror of the create-screen validation: first name is required,
+     * at least one contact (email or phone) is required, and anything provided must
+     * be well-formed. This is the authoritative gate — the UI checks are only a
+     * convenience and can be bypassed (direct API calls, order-screen inline create).
+     */
+    private void validateCustomerRequest(CustomerRequest request) {
+        String firstName = request.firstName() == null ? null : request.firstName().trim();
+        if (firstName == null || firstName.isEmpty()) {
+            throw new ResponseStatusException(BAD_REQUEST, "First name is required.");
+        }
+        String email = normalize(request.email());
+        String phone = normalize(request.phone());
+        if (email == null && phone == null) {
+            throw new ResponseStatusException(BAD_REQUEST, "Add an email or phone number.");
+        }
+        if (email != null && !EMAIL_PATTERN.matcher(email).matches()) {
+            throw new ResponseStatusException(BAD_REQUEST, "Enter a valid email address.");
+        }
+        if (phone != null && !isValidPhone(phone)) {
+            throw new ResponseStatusException(BAD_REQUEST, "Enter a valid phone number.");
+        }
+        validateAddresses(request.addresses());
+    }
+
+    /**
+     * Country-aware address validation mirroring the address modal: a postal code
+     * (when provided) must match the selected country's format, and an address
+     * phone (when provided) must be a plausible length.
+     */
+    private void validateAddresses(List<CustomerAddressRequest> requests) {
+        if (requests == null) {
+            return;
+        }
+        for (CustomerAddressRequest request : requests) {
+            if (request == null || isEmptyAddress(request)) {
+                continue;
+            }
+            String postal = normalize(request.postalCode());
+            String country = normalize(request.country());
+            if (postal != null && country != null) {
+                Pattern pattern = POSTAL_PATTERNS.get(country.toUpperCase(Locale.ROOT));
+                if (pattern != null && !pattern.matcher(postal).matches()) {
+                    throw new ResponseStatusException(
+                            BAD_REQUEST, "Enter a valid postal code for the selected country.");
+                }
+            }
+            String phone = normalize(request.phone());
+            if (phone != null && !isValidPhone(phone)) {
+                throw new ResponseStatusException(BAD_REQUEST, "Enter a valid address phone number.");
+            }
+        }
+    }
+
+    /** 7–15 digits after stripping formatting, matching the E.164-ish UI check. */
+    private static boolean isValidPhone(String phone) {
+        String digits = phone.replaceAll("\\D", "");
+        return digits.length() >= 7 && digits.length() <= 15;
+    }
+
+    /**
+     * Guard against duplicate customers within a store: no two customers may share
+     * an email or a phone number. {@code excludeId} skips the customer being
+     * updated so it doesn't conflict with itself.
+     */
+    private void assertUniqueContact(String storeId, String email, String phone, Long excludeId) {
+        String normalizedEmail = normalize(email);
+        if (normalizedEmail != null) {
+            customerRepository
+                    .findByStoreIdAndEmailIgnoreCase(storeId, normalizedEmail)
+                    .filter(existing -> !existing.getId().equals(excludeId))
+                    .ifPresent(existing -> {
+                        throw new ResponseStatusException(CONFLICT, "A customer with this email already exists.");
+                    });
+        }
+        String normalizedPhone = normalize(phone);
+        if (normalizedPhone != null) {
+            boolean phoneTaken = customerRepository.findByStoreIdAndPhone(storeId, normalizedPhone).stream()
+                    .anyMatch(existing -> !existing.getId().equals(excludeId));
+            if (phoneTaken) {
+                throw new ResponseStatusException(CONFLICT, "A customer with this phone number already exists.");
+            }
+        }
     }
 
     public void delete(String storeId, String publicCustomerId) {
@@ -487,6 +580,15 @@ public class StoreCustomerService {
     // --- import / export helpers -------------------------------------------
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+
+    // Postal formats keyed by ISO country code — mirrors the /public/config/locations
+    // config the address modal validates against, so the server enforces the same rules.
+    private static final Map<String, Pattern> POSTAL_PATTERNS = Map.of(
+            "IN", Pattern.compile("^[1-9][0-9]{5}$"),
+            "US", Pattern.compile("^\\d{5}(-\\d{4})?$"),
+            "GB", Pattern.compile("^[A-Za-z]{1,2}\\d[A-Za-z\\d]? ?\\d[A-Za-z]{2}$"),
+            "AU", Pattern.compile("^\\d{4}$"),
+            "NP", Pattern.compile("^\\d{5}$"));
 
     private CustomerExportRow toExportRow(Customer c) {
         CustomerAddress def = c.getAddresses().stream()

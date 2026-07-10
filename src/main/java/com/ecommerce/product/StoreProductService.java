@@ -103,6 +103,55 @@ public class StoreProductService {
         return new ProductListData(items, total, Math.max(page, 1), size);
     }
 
+    /**
+     * Resolve the full {@link ProductData} for a bulk export. Precedence: {@code all}
+     * exports the whole catalog (narrowed by the same search/status/category filters as
+     * the list view); otherwise explicit {@code publicProductIds} are used, falling back
+     * to {@code skus}. Unknown ids/skus are skipped.
+     */
+    @Transactional(readOnly = true)
+    public List<ProductData> exportProducts(
+            String storeId,
+            List<String> publicProductIds,
+            List<String> skus,
+            boolean all,
+            String search,
+            String status,
+            String category) {
+        List<Product> products;
+        if (all) {
+            String query = search == null ? "" : search.trim().toLowerCase(Locale.ROOT);
+            ProductStatus statusFilter =
+                    (status == null || status.isBlank() || status.equalsIgnoreCase("all"))
+                            ? null
+                            : ProductStatus.from(status);
+            String categoryFilter =
+                    (category == null || category.isBlank() || category.equalsIgnoreCase("all"))
+                            ? null
+                            : category.trim().toLowerCase(Locale.ROOT);
+            products = productRepository.findByStoreIdOrderByCreatedAtDesc(storeId).stream()
+                    .filter(product -> statusFilter == null || product.getStatus() == statusFilter)
+                    .filter(product -> categoryFilter == null
+                            || (product.getCategory() != null
+                                    && product.getCategory().toLowerCase(Locale.ROOT).equals(categoryFilter)))
+                    .filter(product -> query.isEmpty() || searchable(product).contains(query))
+                    .toList();
+        } else if (publicProductIds != null && !publicProductIds.isEmpty()) {
+            products = publicProductIds.stream()
+                    .map(id -> productRepository.findByStoreIdAndPublicProductId(storeId, id).orElse(null))
+                    .filter(product -> product != null)
+                    .toList();
+        } else if (skus != null && !skus.isEmpty()) {
+            products = skus.stream()
+                    .map(sku -> productRepository.findByStoreIdAndSkuIgnoreCase(storeId, sku).orElse(null))
+                    .filter(product -> product != null)
+                    .toList();
+        } else {
+            products = List.of();
+        }
+        return products.stream().map(this::toData).toList();
+    }
+
     public ProductOverviewData overview(String storeId) {
         List<Product> all = productRepository.findByStoreIdOrderByCreatedAtDesc(storeId);
         long total = all.size();
@@ -341,6 +390,7 @@ public class StoreProductService {
         }
         product.setPrice(request.price());
         product.setCompareAtPrice(request.compareAtPrice());
+        product.setCostPerItem(request.costPerItem());
 
         resolveSku(product, request, storeId);
         resolveBarcode(product, request);
@@ -447,6 +497,7 @@ public class StoreProductService {
                 product.getVendor(),
                 product.getPrice(),
                 product.getCompareAtPrice(),
+                product.getCostPerItem(),
                 product.getSku(),
                 product.getBarcode(),
                 product.getStock(),

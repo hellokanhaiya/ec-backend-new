@@ -18,6 +18,7 @@ public record ProductRequest(
         String vendor,
         BigDecimal price,
         BigDecimal compareAtPrice,
+        BigDecimal costPerItem,
         String sku,
         String barcode,
         Integer stock,
