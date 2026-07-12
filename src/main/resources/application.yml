@@ -67,3 +67,14 @@ app:
       credentials-location: ${GOOGLE_APPLICATION_CREDENTIALS:}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:*}
+
+# Razorpay payment gateway (subscriptions/billing). Use TEST keys locally —
+# set RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET in the backend .env. When unset,
+# billing reads work but checkout returns a clear "not configured" error.
+razorpay:
+  key-id: ${RAZORPAY_KEY_ID:}
+  key-secret: ${RAZORPAY_KEY_SECRET:}
+
+# GST/tax added on top of the plan price at checkout (percent).
+billing:
+  tax-percent: ${BILLING_TAX_PERCENT:18}

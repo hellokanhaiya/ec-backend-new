@@ -265,7 +265,9 @@ public class ProductCsvService {
                 trimToNull(row.get("seokeyword")),
                 null,
                 tags,
-                images);
+                images,
+                null,
+                null);
     }
 
     private static List<String> splitPipes(String value) {

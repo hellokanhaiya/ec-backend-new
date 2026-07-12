@@ -41,7 +41,7 @@ class StoreCategoryServiceTest {
     }
 
     private CategoryRequest cat(String name, String slug, String parentPublicId) {
-        return new CategoryRequest(name, slug, null, null, parentPublicId, null, null, null, List.of(), List.of());
+        return new CategoryRequest(name, slug, null, null, parentPublicId, null, null, null, null, List.of(), List.of());
     }
 
     @Test

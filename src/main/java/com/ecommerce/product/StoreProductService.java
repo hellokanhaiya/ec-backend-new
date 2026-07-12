@@ -65,6 +65,11 @@ public class StoreProductService {
             String search,
             String status,
             String category,
+            String vendor,
+            String minPrice,
+            String maxPrice,
+            String stockLevel,
+            String sort,
             String dateFrom,
             String dateTo,
             int page,
@@ -77,6 +82,13 @@ public class StoreProductService {
                 (category == null || category.isBlank() || category.equalsIgnoreCase("all"))
                         ? null
                         : category.trim().toLowerCase(Locale.ROOT);
+        String vendorFilter =
+                (vendor == null || vendor.isBlank() || vendor.equalsIgnoreCase("all"))
+                        ? null
+                        : vendor.trim().toLowerCase(Locale.ROOT);
+        BigDecimal min = parseDecimal(minPrice, "minPrice");
+        BigDecimal max = parseDecimal(maxPrice, "maxPrice");
+        StockLevel stock = parseStockLevel(stockLevel);
         Instant createdFrom = parseInstant(dateFrom);
         Instant createdTo = parseInstant(dateTo);
 
@@ -85,8 +97,14 @@ public class StoreProductService {
                 .filter(product -> categoryFilter == null
                         || (product.getCategory() != null
                                 && product.getCategory().toLowerCase(Locale.ROOT).equals(categoryFilter)))
+                .filter(product -> vendorFilter == null
+                        || (product.getVendor() != null
+                                && product.getVendor().toLowerCase(Locale.ROOT).equals(vendorFilter)))
+                .filter(product -> withinPrice(product.getPrice(), min, max))
+                .filter(product -> matchesStockLevel(product.getStock(), stock))
                 .filter(product -> query.isEmpty() || searchable(product).contains(query))
                 .filter(product -> withinRange(product.getCreatedAt(), createdFrom, createdTo))
+                .sorted(productComparator(sort))
                 .toList();
 
         long total = filtered.size();
@@ -162,9 +180,16 @@ public class StoreProductService {
                 .filter(p -> p.getStock() != null && p.getStock() <= LOW_STOCK_THRESHOLD)
                 .count();
         Set<String> categories = new TreeSet<>();
+        // Distinct vendors, de-duplicated case-insensitively but preserving the first
+        // spelling seen, sorted for a stable filter dropdown.
+        java.util.Map<String, String> vendorsByKey = new java.util.TreeMap<>();
         for (Product p : all) {
             if (p.getCategory() != null && !p.getCategory().isBlank()) {
                 categories.add(p.getCategory().trim().toLowerCase(Locale.ROOT));
+            }
+            if (p.getVendor() != null && !p.getVendor().isBlank()) {
+                String vendorName = p.getVendor().trim();
+                vendorsByKey.putIfAbsent(vendorName.toLowerCase(Locale.ROOT), vendorName);
             }
         }
         BigDecimal avgPrice = BigDecimal.ZERO;
@@ -174,7 +199,9 @@ public class StoreProductService {
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             avgPrice = sum.divide(BigDecimal.valueOf(all.size()), 2, RoundingMode.HALF_UP);
         }
-        return new ProductOverviewData(total, active, draft, archived, lowStock, categories.size(), avgPrice);
+        return new ProductOverviewData(
+                total, active, draft, archived, lowStock, categories.size(), avgPrice,
+                List.copyOf(vendorsByKey.values()));
     }
 
     public ProductPickerListData picker(String storeId, String search, int page, int size) {
@@ -198,6 +225,52 @@ public class StoreProductService {
             hasMore = to < filtered.size();
         }
         return new ProductPickerListData(pageItems.stream().map(this::toPicker).toList(), total, Math.max(page, 1), size, hasMore);
+    }
+
+    /**
+     * System "related products" suggestions: active products in the same category,
+     * excluding the product itself and anything the client already linked or dismissed.
+     * This is the cold-start (category-based) recommendation used until behavioural
+     * data (co-purchase) is available. Newest first; capped at {@code limit} (default 6).
+     */
+    public List<ProductSummaryData> relatedSuggestions(String storeId, RelatedSuggestionRequest request) {
+        if (request == null) {
+            return List.of();
+        }
+        String category = request.category() == null ? "" : request.category().trim().toLowerCase(Locale.ROOT);
+        if (category.isEmpty()) {
+            return List.of();
+        }
+
+        Set<String> exclude = new LinkedHashSet<>();
+        String selfId = request.excludeId() == null ? null : request.excludeId().trim();
+        if (selfId != null && !selfId.isEmpty()) {
+            exclude.add(selfId);
+        }
+        if (request.excludeIds() != null) {
+            for (String id : request.excludeIds()) {
+                if (id != null && !id.isBlank()) {
+                    exclude.add(id.trim());
+                }
+            }
+        }
+        // Defensive: also honour whatever the saved product already links / dismissed.
+        if (selfId != null && !selfId.isEmpty()) {
+            productRepository.findByStoreIdAndPublicProductId(storeId, selfId).ifPresent(self -> {
+                exclude.addAll(self.getDismissedRelatedProductIds());
+                self.getRelatedProducts().forEach(r -> exclude.add(r.getPublicProductId()));
+            });
+        }
+
+        int limit = request.limit() != null && request.limit() > 0 ? Math.min(request.limit(), 24) : 6;
+        return productRepository.findByStoreIdOrderByCreatedAtDesc(storeId).stream()
+                .filter(product -> product.getStatus() == ProductStatus.ACTIVE)
+                .filter(product -> product.getCategory() != null
+                        && product.getCategory().toLowerCase(Locale.ROOT).equals(category))
+                .filter(product -> !exclude.contains(product.getPublicProductId()))
+                .limit(limit)
+                .map(this::toSummary)
+                .toList();
     }
 
     public ProductData get(String storeId, String publicProductId) {
@@ -425,6 +498,51 @@ public class StoreProductService {
         }
 
         applyImages(product, request.images());
+        applyRelatedProducts(product, request.relatedProducts());
+
+        // Dismissed related-product suggestions (ids the merchant removed so they
+        // are never auto-suggested again).
+        product.getDismissedRelatedProductIds().clear();
+        if (request.dismissedRelatedProductIds() != null) {
+            for (String id : request.dismissedRelatedProductIds()) {
+                if (id != null && !id.isBlank()) {
+                    product.getDismissedRelatedProductIds().add(id.trim());
+                }
+            }
+        }
+    }
+
+    /**
+     * Related products (cross-sell) are stored as ordered snapshots — clear and
+     * rebuild from the request, skipping blank ids, self-references and duplicates.
+     */
+    private void applyRelatedProducts(Product product, List<RelatedProductRequest> requests) {
+        product.getRelatedProducts().clear();
+        if (requests == null || requests.isEmpty()) {
+            return;
+        }
+        Set<String> seen = new LinkedHashSet<>();
+        String ownId = product.getPublicProductId();
+        int index = 0;
+        for (RelatedProductRequest request : requests) {
+            if (request == null || request.publicProductId() == null || request.publicProductId().isBlank()) {
+                continue;
+            }
+            String id = request.publicProductId().trim();
+            if (id.equals(ownId) || !seen.add(id)) {
+                continue;
+            }
+            RelatedProduct related = new RelatedProduct();
+            related.setPublicProductId(id);
+            related.setName(normalize(request.name()));
+            related.setSku(normalize(request.sku()));
+            related.setImage(normalize(request.image()));
+            related.setPrice(request.price());
+            related.setMrp(request.mrp());
+            related.setPosition(request.position() != null ? request.position() : index);
+            product.getRelatedProducts().add(related);
+            index++;
+        }
     }
 
     private void applyImages(Product product, List<ProductImageRequest> requests) {
@@ -518,6 +636,8 @@ public class StoreProductService {
                 product.getSalesCount() == null ? 0 : product.getSalesCount(),
                 product.getTags().stream().map(Tag::getName).toList(),
                 product.getImages().stream().map(this::toImageData).toList(),
+                product.getRelatedProducts().stream().map(this::toRelatedData).toList(),
+                List.copyOf(product.getDismissedRelatedProductIds()),
                 product.getCreatedAt(),
                 product.getUpdatedAt());
     }
@@ -525,6 +645,17 @@ public class StoreProductService {
     private ProductImageData toImageData(ProductImage image) {
         return new ProductImageData(
                 image.getId(), image.getUrl(), image.getAltText(), image.getPosition(), image.isPrimaryImage());
+    }
+
+    private RelatedProductData toRelatedData(RelatedProduct related) {
+        return new RelatedProductData(
+                related.getPublicProductId(),
+                related.getName(),
+                related.getSku(),
+                related.getImage(),
+                related.getPrice(),
+                related.getMrp(),
+                related.getPosition());
     }
 
     private ProductSummaryData toSummary(Product product) {
@@ -569,6 +700,92 @@ public class StoreProductService {
                 product.getTaxRate(),
                 product.getVendor(),
                 product.getCategory());
+    }
+
+    /** Stock buckets the advanced filter offers, mirroring the overview's low-stock rule. */
+    private enum StockLevel {
+        IN_STOCK,
+        LOW_STOCK,
+        OUT_OF_STOCK
+    }
+
+    /** Parse a decimal price bound from the advanced filter; blank means "no bound". */
+    private static BigDecimal parseDecimal(String value, String field) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return new BigDecimal(value.trim());
+        } catch (NumberFormatException ex) {
+            throw new ResponseStatusException(BAD_REQUEST, "Invalid " + field + " filter value: " + value);
+        }
+    }
+
+    /** Map the incoming stock-level token to a bucket; blank/unknown means "no filter". */
+    private static StockLevel parseStockLevel(String value) {
+        if (value == null || value.isBlank() || value.equalsIgnoreCase("all")) {
+            return null;
+        }
+        switch (value.trim().toLowerCase(Locale.ROOT)) {
+            case "in_stock", "in-stock", "instock" -> {
+                return StockLevel.IN_STOCK;
+            }
+            case "low_stock", "low-stock", "low" -> {
+                return StockLevel.LOW_STOCK;
+            }
+            case "out_of_stock", "out-of-stock", "outofstock", "out" -> {
+                return StockLevel.OUT_OF_STOCK;
+            }
+            default -> {
+                return null;
+            }
+        }
+    }
+
+    /** Inclusive [min, max] window on a product's price; null bounds are open-ended, null price treated as 0. */
+    private static boolean withinPrice(BigDecimal price, BigDecimal min, BigDecimal max) {
+        if (min == null && max == null) {
+            return true;
+        }
+        BigDecimal value = price == null ? BigDecimal.ZERO : price;
+        if (min != null && value.compareTo(min) < 0) {
+            return false;
+        }
+        return max == null || value.compareTo(max) <= 0;
+    }
+
+    /** Bucket a product's stock the same way the overview does (≤ threshold = low, ≤ 0 = out). */
+    private static boolean matchesStockLevel(Integer stock, StockLevel level) {
+        if (level == null) {
+            return true;
+        }
+        int qty = stock == null ? 0 : stock;
+        return switch (level) {
+            case IN_STOCK -> qty > 0;
+            case LOW_STOCK -> qty > 0 && qty <= LOW_STOCK_THRESHOLD;
+            case OUT_OF_STOCK -> qty <= 0;
+        };
+    }
+
+    /** Sort the filtered page. Default keeps the repository's newest-first order. */
+    private static java.util.Comparator<Product> productComparator(String sort) {
+        String key = sort == null ? "" : sort.trim().toLowerCase(Locale.ROOT);
+        java.util.Comparator<BigDecimal> priceNulls = java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder());
+        java.util.Comparator<Integer> stockNulls = java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder());
+        java.util.Comparator<Instant> createdNulls = java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder());
+        return switch (key) {
+            case "oldest", "created_asc" -> java.util.Comparator.comparing(Product::getCreatedAt, createdNulls);
+            case "price_asc", "price_low" -> java.util.Comparator.comparing(Product::getPrice, priceNulls);
+            case "price_desc", "price_high" -> java.util.Comparator.comparing(Product::getPrice, priceNulls).reversed();
+            case "title_asc", "name_asc" -> java.util.Comparator.comparing(
+                    p -> p.getTitle() == null ? "" : p.getTitle().toLowerCase(Locale.ROOT));
+            case "title_desc", "name_desc" -> java.util.Comparator.comparing(
+                    (Product p) -> p.getTitle() == null ? "" : p.getTitle().toLowerCase(Locale.ROOT)).reversed();
+            case "stock_asc", "stock_low" -> java.util.Comparator.comparing(Product::getStock, stockNulls);
+            case "stock_desc", "stock_high" -> java.util.Comparator.comparing(Product::getStock, stockNulls).reversed();
+            // "newest" / "created_desc" / anything else → newest first (repository default order).
+            default -> java.util.Comparator.comparing(Product::getCreatedAt, createdNulls).reversed();
+        };
     }
 
     /** Parse an ISO-8601 instant sent by the date-range filter; blank means "no bound". */

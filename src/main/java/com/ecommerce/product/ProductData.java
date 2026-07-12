@@ -41,5 +41,7 @@ public record ProductData(
         int salesCount,
         List<String> tags,
         List<ProductImageData> images,
+        List<RelatedProductData> relatedProducts,
+        List<String> dismissedRelatedProductIds,
         Instant createdAt,
         Instant updatedAt) {}

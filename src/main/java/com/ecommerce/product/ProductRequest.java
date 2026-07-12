@@ -38,4 +38,6 @@ public record ProductRequest(
         String seoKeyword,
         Boolean createRedirect,
         List<String> tags,
-        List<ProductImageRequest> images) {}
+        List<ProductImageRequest> images,
+        List<RelatedProductRequest> relatedProducts,
+        List<String> dismissedRelatedProductIds) {}

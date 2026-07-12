@@ -11,4 +11,5 @@ public record OrderLineItemRequest(
         BigDecimal price,
         Boolean taxable,
         BigDecimal taxRate,
-        String image) {}
+        String image,
+        OrderLineItemDiscountRequest discount) {}

@@ -4,6 +4,8 @@ import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
+import com.ecommerce.order.CustomerOrderStats;
+import com.ecommerce.order.StoreOrderRepository;
 import com.ecommerce.tag.StoreTagService;
 import com.ecommerce.tag.Tag;
 import java.math.BigDecimal;
@@ -30,10 +32,24 @@ import org.springframework.web.server.ResponseStatusException;
 public class StoreCustomerService {
     private final CustomerRepository customerRepository;
     private final StoreTagService storeTagService;
+    private final StoreOrderRepository orderRepository;
 
-    public StoreCustomerService(CustomerRepository customerRepository, StoreTagService storeTagService) {
+    public StoreCustomerService(
+            CustomerRepository customerRepository,
+            StoreTagService storeTagService,
+            StoreOrderRepository orderRepository) {
         this.customerRepository = customerRepository;
         this.storeTagService = storeTagService;
+        this.orderRepository = orderRepository;
+    }
+
+    /** One aggregate query per list/export → a map of customer id → placed-order stats. */
+    private Map<String, CustomerOrderStats> loadOrderStats(String storeId) {
+        Map<String, CustomerOrderStats> byCustomer = new HashMap<>();
+        for (CustomerOrderStats stats : orderRepository.aggregateCustomerOrderStats(storeId)) {
+            byCustomer.put(stats.getCustomerPublicId(), stats);
+        }
+        return byCustomer;
     }
 
     public CustomerListData list(
@@ -61,7 +77,8 @@ public class StoreCustomerService {
             pageItems = from >= filtered.size() ? List.of() : filtered.subList(from, to);
         }
 
-        List<CustomerSummaryData> items = pageItems.stream().map(this::toSummary).toList();
+        Map<String, CustomerOrderStats> stats = loadOrderStats(storeId);
+        List<CustomerSummaryData> items = pageItems.stream().map(c -> toSummary(c, stats)).toList();
         return new CustomerListData(items, total, Math.max(page, 1), size);
     }
 
@@ -227,7 +244,8 @@ public class StoreCustomerService {
             Set<String> idSet = new HashSet<>(ids);
             selected = all.stream().filter(c -> idSet.contains(c.getPublicCustomerId())).toList();
         }
-        return selected.stream().map(this::toExportRow).toList();
+        Map<String, CustomerOrderStats> stats = loadOrderStats(storeId);
+        return selected.stream().map(c -> toExportRow(c, stats)).toList();
     }
 
     /**
@@ -502,13 +520,18 @@ public class StoreCustomerService {
                 address.getPhone());
     }
 
-    private CustomerSummaryData toSummary(Customer customer) {
+    private CustomerSummaryData toSummary(Customer customer, Map<String, CustomerOrderStats> stats) {
         String location = customer.getAddresses().stream()
                 .filter(CustomerAddress::isDefaultAddress)
                 .findFirst()
                 .or(() -> customer.getAddresses().stream().findFirst())
                 .map(this::formatLocation)
                 .orElse(null);
+        CustomerOrderStats orderStats = stats.get(customer.getPublicCustomerId());
+        int orders = orderStats == null ? 0 : (int) orderStats.getOrderCount();
+        BigDecimal totalSpent = orderStats == null || orderStats.getTotalSpent() == null
+                ? BigDecimal.ZERO
+                : orderStats.getTotalSpent();
         return new CustomerSummaryData(
                 customer.getPublicCustomerId(),
                 customer.getCustomerCode(),
@@ -520,8 +543,8 @@ public class StoreCustomerService {
                 location,
                 customer.getStatus().name(),
                 customer.getTags().stream().map(Tag::getName).toList(),
-                0,
-                BigDecimal.ZERO,
+                orders,
+                totalSpent,
                 customer.getWallet(),
                 customer.getCreatedAt());
     }
@@ -590,12 +613,17 @@ public class StoreCustomerService {
             "AU", Pattern.compile("^\\d{4}$"),
             "NP", Pattern.compile("^\\d{5}$"));
 
-    private CustomerExportRow toExportRow(Customer c) {
+    private CustomerExportRow toExportRow(Customer c, Map<String, CustomerOrderStats> stats) {
         CustomerAddress def = c.getAddresses().stream()
                 .filter(CustomerAddress::isDefaultAddress)
                 .findFirst()
                 .or(() -> c.getAddresses().stream().findFirst())
                 .orElse(null);
+        CustomerOrderStats orderStats = stats.get(c.getPublicCustomerId());
+        int totalOrders = orderStats == null ? 0 : (int) orderStats.getOrderCount();
+        BigDecimal totalSpent = orderStats == null || orderStats.getTotalSpent() == null
+                ? BigDecimal.ZERO
+                : orderStats.getTotalSpent();
         String tags = c.getTags().stream().map(Tag::getName).collect(Collectors.joining(","));
         return new CustomerExportRow(
                 c.getCustomerCode(),
@@ -622,8 +650,8 @@ public class StoreCustomerService {
                 def != null ? def.getCountry() : null,
                 def != null ? def.getPostalCode() : null,
                 def != null ? def.getPhone() : null,
-                BigDecimal.ZERO,
-                0);
+                totalSpent,
+                totalOrders);
     }
 
     private static List<CustomerAddressRequest> buildImportAddress(CustomerImportRow row) {

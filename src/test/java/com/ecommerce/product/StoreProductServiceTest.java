@@ -73,7 +73,7 @@ class StoreProductServiceTest {
                 category, categoryPath, categoryPublicId, null,
                 price, null, null, sku, barcode,
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                createRedirect, List.of(), List.of());
+                createRedirect, List.of(), List.of(), List.of(), List.of());
     }
 
     private ProductRequest reqWithImages(String title, List<ProductImageRequest> images) {
@@ -82,7 +82,7 @@ class StoreProductServiceTest {
                 null, null, null, null,
                 TEN, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                null, List.of(), images);
+                null, List.of(), images, List.of(), List.of());
     }
 
     @Test

@@ -86,6 +86,10 @@ public final class PermissionCatalog {
     public static final String CONTENT_PAGES = "content.pages";
     public static final String CONTENT_MEDIA = "content.media";
 
+    // Marketplace (multi-vendor)
+    public static final String MARKETPLACE_VENDORS = "marketplace.vendors";
+    public static final String MARKETPLACE_PAYOUTS = "marketplace.payouts";
+
     /** Default role keys. */
     public static final String ROLE_OWNER = "owner";
     public static final String ROLE_STORE_ADMIN = "store_admin";
@@ -174,7 +178,11 @@ public final class PermissionCatalog {
             // Content
             new PermissionRule(CONTENT_BLOGS, "Content", "Blogs", "Blog posts and articles."),
             new PermissionRule(CONTENT_PAGES, "Content", "Pages", "Static and landing pages."),
-            new PermissionRule(CONTENT_MEDIA, "Content", "Media", "Media library and assets."));
+            new PermissionRule(CONTENT_MEDIA, "Content", "Media", "Media library and assets."),
+
+            // Marketplace
+            new PermissionRule(MARKETPLACE_VENDORS, "Marketplace", "Vendors", "Add, approve, and manage marketplace vendors."),
+            new PermissionRule(MARKETPLACE_PAYOUTS, "Marketplace", "Vendor payouts", "Vendor earnings and payout runs."));
 
     private PermissionCatalog() {}
 

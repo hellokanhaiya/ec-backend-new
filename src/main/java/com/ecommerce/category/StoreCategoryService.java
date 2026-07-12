@@ -87,6 +87,13 @@ public class StoreCategoryService {
         return toData(categoryRepository.save(category));
     }
 
+    /** Enable/disable a category without touching the rest of its fields. */
+    public CategoryData setActive(String storeId, String publicCategoryId, boolean active) {
+        Category category = require(storeId, publicCategoryId);
+        category.setActive(active);
+        return toData(categoryRepository.save(category));
+    }
+
     public void delete(String storeId, String publicCategoryId) {
         Category category = require(storeId, publicCategoryId);
         promoteChildren(storeId, category);
@@ -170,6 +177,11 @@ public class StoreCategoryService {
         category.setSeoTitle(normalize(request.seoTitle()));
         category.setSeoDescription(normalize(request.seoDescription()));
         category.setSeoKeyword(normalize(request.seoKeyword()));
+        // Enabled state: honour an explicit value; leave unchanged when omitted (new
+        // categories keep the entity default of enabled).
+        if (request.active() != null) {
+            category.setActive(request.active());
+        }
 
         // Tags: upsert into the store's shared tag library.
         category.getTags().clear();
@@ -256,6 +268,7 @@ public class StoreCategoryService {
                 category.getTags().stream().map(Tag::getName).toList(),
                 category.getProducts().stream().map(this::toProductData).toList(),
                 category.getProducts().size(),
+                category.isActive(),
                 category.getCreatedAt(),
                 category.getUpdatedAt());
     }
@@ -274,6 +287,7 @@ public class StoreCategoryService {
                 category.getImage(),
                 category.getParentPublicId(),
                 category.getProducts().size(),
+                category.isActive(),
                 category.getCreatedAt());
     }
 

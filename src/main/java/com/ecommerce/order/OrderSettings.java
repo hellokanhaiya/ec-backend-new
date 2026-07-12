@@ -34,16 +34,24 @@ public class OrderSettings {
     @Column(name = "order_prefix", nullable = false, length = 16)
     private String orderPrefix = "ORD";
 
-    @Column(name = "order_number_padding", nullable = false)
-    private Integer orderNumberPadding = 5;
+    /** Prefix for draft-order numbers, kept on a separate counter from confirmed orders. */
+    @Column(name = "draft_prefix", nullable = false, length = 16)
+    private String draftPrefix = "DR";
 
-    /** When true the running order number restarts at 1 at the start of each financial year. */
+    @Column(name = "order_number_padding", nullable = false)
+    private Integer orderNumberPadding = 4;
+
+    /**
+     * When true the running order number restarts at 1 at the start of each financial year.
+     * Off by default: a fresh store numbers continuously (ORD-0001, ORD-0002, ...). Turning
+     * this on is normally paired with {@link #includeFinancialYear} so numbers stay unique.
+     */
     @Column(name = "financial_year_reset", nullable = false)
-    private boolean financialYearReset = true;
+    private boolean financialYearReset = false;
 
     /** When true the financial-year label (e.g. 2526) is embedded in the order number. */
     @Column(name = "include_financial_year", nullable = false)
-    private boolean includeFinancialYear = true;
+    private boolean includeFinancialYear = false;
 
     /** Month (1-12) the financial year starts on. India defaults to April. */
     @Column(name = "financial_year_start_month", nullable = false)

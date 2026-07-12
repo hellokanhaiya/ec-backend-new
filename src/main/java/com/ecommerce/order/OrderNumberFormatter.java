@@ -29,6 +29,14 @@ final class OrderNumberFormatter {
     }
 
     /**
+     * Draft counter period. Namespaced with a {@code "D-"} prefix so drafts count
+     * independently of confirmed orders (DR-0001, DR-0002, ...).
+     */
+    static String draftPeriodKey(OrderSettings settings, Instant at) {
+        return "D-" + periodKey(settings, at);
+    }
+
+    /**
      * Financial-year label such as {@code "2526"} for the year starting April 2025, derived
      * from the configured start month (defaults to April).
      */
@@ -42,11 +50,17 @@ final class OrderNumberFormatter {
 
     /** Formats {@code prefix[-fyLabel]-paddedSequence}, e.g. {@code ORD-2526-00001}. */
     static String format(OrderSettings settings, Instant at, long sequenceValue) {
-        String prefix = settings.getOrderPrefix() == null || settings.getOrderPrefix().isBlank()
-                ? "ORD"
-                : settings.getOrderPrefix().trim();
+        return format(settings, at, sequenceValue, settings.getOrderPrefix(), "ORD");
+    }
+
+    /** As {@link #format} but with an explicit prefix (used for draft numbers). */
+    static String format(
+            OrderSettings settings, Instant at, long sequenceValue, String prefixOverride, String fallbackPrefix) {
+        String prefix = prefixOverride == null || prefixOverride.isBlank()
+                ? fallbackPrefix
+                : prefixOverride.trim();
         int padding = settings.getOrderNumberPadding() == null || settings.getOrderNumberPadding() < 1
-                ? 5
+                ? 4
                 : settings.getOrderNumberPadding();
         StringBuilder number = new StringBuilder(prefix);
         if (settings.isIncludeFinancialYear()) {

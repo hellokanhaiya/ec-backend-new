@@ -25,6 +25,7 @@ import java.util.Locale;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -32,6 +33,9 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 @Transactional
 public class StoreOrderService {
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+    private static final BigDecimal ONE_HUNDRED = new BigDecimal("100");
+    private static final int NOTES_MAX_LENGTH = 2000;
     private static final Map<String, String> CURRENCY_SYMBOLS;
 
     static {
@@ -119,6 +123,7 @@ public class StoreOrderService {
     public OrderListData list(
             String storeId,
             String search,
+            String status,
             String payment,
             String fulfillment,
             String dateFrom,
@@ -129,12 +134,14 @@ public class StoreOrderService {
         List<StoreOrder> all = orderRepository.findByStoreIdOrderByCreatedAtDesc(storeId);
         String query = search == null ? "" : search.trim().toLowerCase(Locale.ROOT);
         String customerQuery = customerName == null ? "" : customerName.trim().toLowerCase(Locale.ROOT);
+        OrderStatus statusFilter = parseStatusFilter(status);
         PaymentStatus paymentFilter = parsePaymentFilter(payment);
         FulfillmentStatus fulfillmentFilter = parseFulfillmentFilter(fulfillment);
         Instant createdFrom = parseInstant(dateFrom);
         Instant createdTo = parseInstant(dateTo);
 
         List<StoreOrder> filtered = all.stream()
+                .filter(order -> statusFilter == null || statusOf(order) == statusFilter)
                 .filter(order -> paymentFilter == null || order.getPaymentStatus() == paymentFilter)
                 .filter(order -> fulfillmentFilter == null || order.getFulfillmentStatus() == fulfillmentFilter)
                 .filter(order -> query.isEmpty() || searchable(order).contains(query))
@@ -156,7 +163,12 @@ public class StoreOrderService {
     }
 
     public OrderOverviewData overview(String storeId) {
-        List<StoreOrder> all = orderRepository.findByStoreIdOrderByCreatedAtDesc(storeId);
+        List<StoreOrder> everything = orderRepository.findByStoreIdOrderByCreatedAtDesc(storeId);
+        long drafts = everything.stream().filter(order -> statusOf(order) == OrderStatus.DRAFT).count();
+        // Draft orders are excluded from the operational counters until confirmed.
+        List<StoreOrder> all = everything.stream()
+                .filter(order -> statusOf(order) != OrderStatus.DRAFT)
+                .toList();
         long pendingPayment = all.stream().filter(order -> order.getPaymentStatus() != PaymentStatus.PAID).count();
         long readyToShip = all.stream()
                 .filter(order -> order.getPaymentStatus() == PaymentStatus.PAID)
@@ -177,7 +189,7 @@ public class StoreOrderService {
                 .filter(order -> order.getPaymentStatus() == PaymentStatus.PAID)
                 .map(StoreOrder::getTotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new OrderOverviewData(all.size(), pendingPayment, readyToShip, shipped, delivered, returns, money(revenue));
+        return new OrderOverviewData(all.size(), drafts, pendingPayment, readyToShip, shipped, delivered, returns, money(revenue));
     }
 
     public OrderData get(String storeId, String publicOrderId) {
@@ -191,13 +203,18 @@ public class StoreOrderService {
         StoreOrder order = new StoreOrder();
         order.setStoreId(storeId);
         order.setOwnerPublicUserId(ownerPublicUserId);
+        order.setStatus(parseStatus(request.status()));
         applyRequest(order, request, storeId, ownerPublicUserId);
-        order.setOrderNumber(generateOrderNumber(storeId));
+        // Drafts are numbered on their own counter (e.g. DR-0001); confirmed orders get ORD-0001.
+        order.setOrderNumber(generateOrderNumber(storeId, statusOf(order) == OrderStatus.DRAFT));
         StoreOrder saved = orderRepository.save(order);
-        // New orders draw down stock at the fulfilling warehouse.
-        inventoryService.deduct(storeId, saved.getFulfillmentWarehousePublicId(), lineItemQuantities(saved));
-        if (saved.getPromotionPublicId() != null) {
-            promotionService.markRedeemed(storeId, saved.getPromotionPublicId());
+        if (statusOf(saved) != OrderStatus.DRAFT) {
+            // Confirmed orders draw down stock at the fulfilling warehouse; drafts don't
+            // touch inventory or redeem promotions until they are confirmed.
+            inventoryService.deduct(storeId, saved.getFulfillmentWarehousePublicId(), lineItemQuantities(saved));
+            if (saved.getPromotionPublicId() != null) {
+                promotionService.markRedeemed(storeId, saved.getPromotionPublicId());
+            }
         }
         return toData(saved);
     }
@@ -207,7 +224,48 @@ public class StoreOrderService {
             throw new ResponseStatusException(BAD_REQUEST, "Request body is required");
         }
         StoreOrder order = require(storeId, publicOrderId);
+        OrderStatus current = statusOf(order);
+        OrderStatus requested = request.status() == null || request.status().isBlank()
+                ? current
+                : parseStatus(request.status());
+        if (current == OrderStatus.CONFIRMED && requested == OrderStatus.DRAFT) {
+            throw new ResponseStatusException(BAD_REQUEST, "A confirmed order cannot be moved back to draft");
+        }
+        boolean confirming = current == OrderStatus.DRAFT && requested == OrderStatus.CONFIRMED;
+        order.setStatus(requested);
         applyRequest(order, request, storeId, order.getOwnerPublicUserId());
+        if (confirming) {
+            // A confirmed order gets a real order number (ORD-0001) off the confirmed
+            // counter, replacing the draft's DR-0001 placeholder.
+            order.setOrderNumber(generateOrderNumber(storeId, false));
+        }
+        StoreOrder saved = orderRepository.save(order);
+        if (confirming) {
+            // Confirming a draft applies the side effects skipped at draft creation.
+            inventoryService.deduct(storeId, saved.getFulfillmentWarehousePublicId(), lineItemQuantities(saved));
+            if (saved.getPromotionPublicId() != null) {
+                promotionService.markRedeemed(storeId, saved.getPromotionPublicId());
+            }
+        }
+        return toData(saved);
+    }
+
+    public OrderData recordPayment(String storeId, String publicOrderId, RecordPaymentRequest request) {
+        if (request == null) {
+            throw new ResponseStatusException(BAD_REQUEST, "Request body is required");
+        }
+        StoreOrder order = require(storeId, publicOrderId);
+        PaymentStatus status = request.status() == null || request.status().isBlank()
+                ? PaymentStatus.PAID
+                : parsePayment(request.status());
+        BigDecimal amount = request.amount() == null ? order.getTotal() : request.amount();
+        if (amount.signum() < 0) {
+            throw new ResponseStatusException(BAD_REQUEST, "Payment amount cannot be negative");
+        }
+        order.setPaymentStatus(status);
+        order.setPaymentMethod(normalize(request.method()));
+        order.setPaymentReference(normalize(request.reference()));
+        order.setAmountPaid(money(amount));
         return toData(orderRepository.save(order));
     }
 
@@ -270,8 +328,10 @@ public class StoreOrderService {
     // --- private helpers ---------------------------------------------------
 
     private void applyRequest(StoreOrder order, OrderRequest request, String storeId, String ownerPublicUserId) {
+        boolean draft = statusOf(order) == OrderStatus.DRAFT;
         String customerName = normalize(request.customerName());
-        if (customerName == null && request.newCustomer() == null && request.customerPublicId() == null) {
+        // Drafts may be saved without a customer; confirmed orders always need one.
+        if (!draft && customerName == null && request.newCustomer() == null && request.customerPublicId() == null) {
             throw new ResponseStatusException(BAD_REQUEST, "Customer name, customerPublicId, or newCustomer is required");
         }
 
@@ -307,7 +367,8 @@ public class StoreOrderService {
             order.setCustomerPublicId(normalize(request.customerPublicId()));
         }
 
-        order.setCustomerName(customerName);
+        // customer_name is NOT NULL in the DB; a customer-less draft stores an empty name.
+        order.setCustomerName(customerName == null ? "" : customerName);
         // Resolve the fulfilling warehouse: keep the existing one on update when not
         // re-specified, otherwise fall back to default (or require a choice if multi-warehouse).
         String requestedWarehouse = normalize(request.warehousePublicId());
@@ -317,14 +378,15 @@ public class StoreOrderService {
             order.setFulfillmentWarehousePublicId(
                     warehouseService.resolveFulfillmentWarehouse(storeId, ownerPublicUserId, requestedWarehouse));
         }
-        order.setEmail(normalize(request.email()));
-        order.setPhone(normalize(request.phone()));
+        order.setEmail(validateEmail(normalize(request.email())));
+        order.setPhone(validatePhone(normalize(request.phone())));
         order.setPaymentStatus(parsePayment(request.payment()));
         order.setFulfillmentStatus(parseFulfillment(request.fulfillment()));
         order.setChannel(firstNonBlank(request.channel(), "Online Store"));
         order.setCourier(normalize(request.courier()));
         order.setTrackingNumber(normalize(request.trackingNumber()));
-        order.setNotes(normalize(request.notes()));
+        order.setNotes(validateNotes(normalize(request.notes())));
+        order.setShippingLabel(validateShippingLabel(normalize(request.shippingLabel())));
 
         OrderAddressRequest address = request.address();
         order.setAddressLine1(address == null ? null : normalize(address.line1()));
@@ -337,7 +399,7 @@ public class StoreOrderService {
         // Currency resolution: request > store profile > defaults
         resolveCurrency(order, request, storeId);
 
-        applyLineItems(order, request.products());
+        applyLineItems(order, request.products(), draft);
         applyDiscount(order, storeId, request.discount(), request.shippingCharge());
         applyTags(order, request.tags());
         recalculateTotals(order, request.shippingCharge(), request.packageCharge(), storeId);
@@ -448,9 +510,12 @@ public class StoreOrderService {
         }
     }
 
-    private void applyLineItems(StoreOrder order, List<OrderLineItemRequest> requests) {
+    private void applyLineItems(StoreOrder order, List<OrderLineItemRequest> requests, boolean allowEmpty) {
         order.getLineItems().clear();
         if (requests == null || requests.isEmpty()) {
+            if (allowEmpty) {
+                return;
+            }
             throw new ResponseStatusException(BAD_REQUEST, "At least one product is required");
         }
         for (OrderLineItemRequest request : requests) {
@@ -469,6 +534,10 @@ public class StoreOrderService {
             if (price.signum() < 0) {
                 throw new ResponseStatusException(BAD_REQUEST, "Product price cannot be negative");
             }
+            BigDecimal taxRate = request.taxRate();
+            if (taxRate != null && (taxRate.signum() < 0 || taxRate.compareTo(ONE_HUNDRED) > 0)) {
+                throw new ResponseStatusException(BAD_REQUEST, "Tax rate must be between 0 and 100");
+            }
             StoreOrderLineItem item = new StoreOrderLineItem();
             item.setProductPublicId(normalize(request.productPublicId()));
             item.setName(name);
@@ -476,15 +545,83 @@ public class StoreOrderService {
             item.setVariant(normalize(request.variant()));
             item.setQuantity(quantity);
             item.setUnitPrice(money(price));
-            item.setLineTotal(money(price.multiply(BigDecimal.valueOf(quantity))));
             item.setTaxable(request.taxable() == null || request.taxable());
-            item.setTaxRate(request.taxRate() == null ? getDefaultTaxRate(order.getStoreId()) : request.taxRate());
+            item.setTaxRate(taxRate == null ? getDefaultTaxRate(order.getStoreId()) : taxRate);
             item.setImage(normalize(request.image()));
+            applyLineItemDiscount(item, request.discount(), name);
             order.getLineItems().add(item);
         }
-        if (order.getLineItems().isEmpty()) {
+        if (order.getLineItems().isEmpty() && !allowEmpty) {
             throw new ResponseStatusException(BAD_REQUEST, "At least one product is required");
         }
+    }
+
+    /**
+     * Applies the merchant-entered per-item discount. The discount value is per unit:
+     * a fixed amount is subtracted from the unit price (and may not exceed it), a
+     * percentage reduces the gross line total. The discounted amount is stored on the
+     * line and already reflected in {@code lineTotal}.
+     */
+    private void applyLineItemDiscount(StoreOrderLineItem item, OrderLineItemDiscountRequest discount, String name) {
+        BigDecimal gross = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+        if (discount == null || discount.value() == null || discount.value().signum() == 0) {
+            item.setDiscountAmount(BigDecimal.ZERO);
+            item.setLineTotal(money(gross));
+            return;
+        }
+        BigDecimal value = discount.value();
+        if (value.signum() < 0) {
+            throw new ResponseStatusException(BAD_REQUEST, "Item discount cannot be negative for " + name);
+        }
+        DiscountType type = parseDiscountType(discount.type());
+        BigDecimal discountAmount;
+        if (type == DiscountType.PERCENTAGE) {
+            if (value.compareTo(ONE_HUNDRED) > 0) {
+                throw new ResponseStatusException(BAD_REQUEST, "Item percentage discount cannot exceed 100 for " + name);
+            }
+            discountAmount = gross.multiply(value).divide(ONE_HUNDRED, 2, RoundingMode.HALF_UP);
+        } else {
+            if (value.compareTo(item.getUnitPrice()) > 0) {
+                throw new ResponseStatusException(BAD_REQUEST, "Item discount cannot exceed the unit price for " + name);
+            }
+            discountAmount = value.multiply(BigDecimal.valueOf(item.getQuantity()));
+        }
+        item.setDiscountType(type);
+        item.setDiscountValue(money(value));
+        item.setDiscountReason(normalize(discount.reason()));
+        item.setDiscountAmount(money(discountAmount));
+        item.setLineTotal(money(gross.subtract(discountAmount).max(BigDecimal.ZERO)));
+    }
+
+    private static String validateEmail(String email) {
+        if (email != null && !EMAIL_PATTERN.matcher(email).matches()) {
+            throw new ResponseStatusException(BAD_REQUEST, "Invalid email address");
+        }
+        return email;
+    }
+
+    private static String validatePhone(String phone) {
+        if (phone != null) {
+            long digits = phone.chars().filter(Character::isDigit).count();
+            if (digits < 7 || digits > 15) {
+                throw new ResponseStatusException(BAD_REQUEST, "Phone number must contain 7 to 15 digits");
+            }
+        }
+        return phone;
+    }
+
+    private static String validateNotes(String notes) {
+        if (notes != null && notes.length() > NOTES_MAX_LENGTH) {
+            throw new ResponseStatusException(BAD_REQUEST, "Notes cannot exceed " + NOTES_MAX_LENGTH + " characters");
+        }
+        return notes;
+    }
+
+    private static String validateShippingLabel(String label) {
+        if (label != null && label.length() > 120) {
+            throw new ResponseStatusException(BAD_REQUEST, "Shipping label cannot exceed 120 characters");
+        }
+        return label;
     }
 
     private void recalculateTotals(StoreOrder order, BigDecimal requestedShipping, BigDecimal requestedPackage, String storeId) {
@@ -513,9 +650,9 @@ public class StoreOrderService {
             BigDecimal rate = item.getTaxRate() == null ? settings.getDefaultTaxRate() : item.getTaxRate();
             tax = tax.add(taxableBase.multiply(rate).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP));
         }
-        BigDecimal shipping = requestedShipping == null
-                ? defaultShipping(discountedSubtotal, settings)
-                : requestedShipping;
+        // No default shipping charge: the order carries exactly what the merchant
+        // entered; a missing value means no shipping charge at all.
+        BigDecimal shipping = requestedShipping == null ? BigDecimal.ZERO : requestedShipping;
         BigDecimal packageCharge = requestedPackage == null ? settings.getDefaultPackageCharge() : requestedPackage;
         if (shipping.signum() < 0 || packageCharge.signum() < 0) {
             throw new ResponseStatusException(BAD_REQUEST, "Shipping and package charges cannot be negative");
@@ -537,10 +674,12 @@ public class StoreOrderService {
      * locked for update so concurrent creates serialise and never share a number; the
      * counter restarts at 1 each financial year when {@code financialYearReset} is on.
      */
-    private String generateOrderNumber(String storeId) {
+    private String generateOrderNumber(String storeId, boolean draft) {
         OrderSettings settings = getSettings(storeId);
         Instant now = Instant.now();
-        String periodKey = OrderNumberFormatter.periodKey(settings, now);
+        String periodKey = draft
+                ? OrderNumberFormatter.draftPeriodKey(settings, now)
+                : OrderNumberFormatter.periodKey(settings, now);
         OrderNumberSequence sequence = sequenceRepository
                 .lockByStoreIdAndPeriodKey(storeId, periodKey)
                 .orElseGet(() -> {
@@ -553,7 +692,9 @@ public class StoreOrderService {
         long next = sequence.getLastValue() + 1;
         sequence.setLastValue(next);
         sequenceRepository.save(sequence);
-        return OrderNumberFormatter.format(settings, now, next);
+        return draft
+                ? OrderNumberFormatter.format(settings, now, next, settings.getDraftPrefix(), "DR")
+                : OrderNumberFormatter.format(settings, now, next);
     }
 
     private OrderSettings getSettings(String storeId) {
@@ -827,6 +968,7 @@ public class StoreOrderService {
         return new OrderData(
                 order.getPublicOrderId(),
                 order.getOrderNumber(),
+                statusOf(order).apiValue(),
                 order.getCustomerName(),
                 order.getCustomerPublicId(),
                 order.getEmail(),
@@ -845,9 +987,13 @@ public class StoreOrderService {
                 order.isPromotionFreeShipping(),
                 order.getPromotionShippingSavings(),
                 order.getShippingCharge(),
+                order.getShippingLabel(),
                 order.getPackageCharge(),
                 order.getPaymentStatus().apiValue(),
                 order.getPaymentStatus().apiValue(),
+                order.getPaymentMethod(),
+                order.getPaymentReference(),
+                order.getAmountPaid(),
                 order.getFulfillmentStatus().apiValue(),
                 order.getFulfillmentStatus().apiValue(),
                 itemCount(order),
@@ -869,6 +1015,7 @@ public class StoreOrderService {
         return new OrderSummaryData(
                 order.getPublicOrderId(),
                 order.getOrderNumber(),
+                statusOf(order).apiValue(),
                 order.getCustomerName(),
                 order.getEmail(),
                 order.getPhone(),
@@ -905,7 +1052,6 @@ public class StoreOrderService {
 
     private OrderLineItemData toLineItemData(StoreOrderLineItem item) {
         return new OrderLineItemData(
-                item.getId() == null ? null : String.valueOf(item.getId()),
                 item.getProductPublicId(),
                 item.getName(),
                 item.getSku(),
@@ -915,7 +1061,11 @@ public class StoreOrderService {
                 item.getLineTotal(),
                 item.isTaxable(),
                 item.getTaxRate(),
-                item.getImage());
+                item.getImage(),
+                item.getDiscountType() == null ? null : item.getDiscountType().apiValue(),
+                item.getDiscountValue(),
+                item.getDiscountReason(),
+                item.getDiscountAmount());
     }
 
     private OrderAddressData toAddress(StoreOrder order) {
@@ -930,6 +1080,10 @@ public class StoreOrderService {
 
     private List<OrderTimelineData> timeline(StoreOrder order) {
         List<OrderTimelineData> timeline = new ArrayList<>();
+        if (statusOf(order) == OrderStatus.DRAFT) {
+            timeline.add(new OrderTimelineData("Draft created", displayTime(order.getCreatedAt()), "Draft order created in admin"));
+            return timeline;
+        }
         timeline.add(new OrderTimelineData("Order placed", displayTime(order.getCreatedAt()), "Order created in admin"));
         if (order.getPaymentStatus() == PaymentStatus.PAID) {
             timeline.add(new OrderTimelineData("Payment received", displayTime(order.getUpdatedAt()), "Payment marked as paid"));
@@ -965,15 +1119,36 @@ public class StoreOrderService {
         return name != null && name.toLowerCase(Locale.ROOT).contains(query);
     }
 
-    private static BigDecimal defaultShipping(BigDecimal discountedSubtotal, OrderSettings settings) {
-        if (discountedSubtotal.signum() <= 0 || discountedSubtotal.compareTo(settings.getFreeShippingThreshold()) > 0) {
-            return BigDecimal.ZERO;
-        }
-        return settings.getDefaultShippingCharge();
-    }
-
     private static BigDecimal money(BigDecimal value) {
         return (value == null ? BigDecimal.ZERO : value).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /** Order status with the pre-migration null column read as CONFIRMED. */
+    private static OrderStatus statusOf(StoreOrder order) {
+        return order.getStatus() == null ? OrderStatus.CONFIRMED : order.getStatus();
+    }
+
+    private static OrderStatus parseStatus(String value) {
+        try {
+            return OrderStatus.from(value);
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(BAD_REQUEST, "Invalid order status: " + value);
+        }
+    }
+
+    /** Listing filter: blank/"confirmed" hides drafts, "draft" shows only drafts, "all" shows both. */
+    private static OrderStatus parseStatusFilter(String value) {
+        if (value == null || value.isBlank() || value.equalsIgnoreCase("confirmed")) {
+            return OrderStatus.CONFIRMED;
+        }
+        if (value.equalsIgnoreCase("all")) {
+            return null;
+        }
+        try {
+            return OrderStatus.from(value);
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(BAD_REQUEST, "Invalid order status filter: " + value);
+        }
     }
 
     private static PaymentStatus parsePayment(String value) {

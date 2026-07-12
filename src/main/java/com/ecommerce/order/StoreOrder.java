@@ -71,9 +71,24 @@ public class StoreOrder {
     @Column(name = "payment_status", nullable = false, length = 32)
     private PaymentStatus paymentStatus = PaymentStatus.PENDING;
 
+    // Set when a merchant records a payment against the order.
+    @Column(name = "payment_method", length = 48)
+    private String paymentMethod;
+
+    @Column(name = "payment_reference", length = 128)
+    private String paymentReference;
+
+    @Column(name = "amount_paid", precision = 15, scale = 2)
+    private BigDecimal amountPaid;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "fulfillment_status", nullable = false, length = 32)
     private FulfillmentStatus fulfillmentStatus = FulfillmentStatus.PENDING;
+
+    /** Draft vs confirmed order. Nullable in the DB so pre-existing rows read as CONFIRMED. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", length = 32)
+    private OrderStatus status = OrderStatus.CONFIRMED;
 
     @Column(name = "channel", length = 80)
     private String channel = "Online Store";
@@ -160,6 +175,9 @@ public class StoreOrder {
 
     @Column(name = "shipping_charge", nullable = false, precision = 15, scale = 2)
     private BigDecimal shippingCharge = BigDecimal.ZERO;
+
+    @Column(name = "shipping_label", length = 120)
+    private String shippingLabel;
 
     @Column(name = "package_charge", nullable = false, precision = 15, scale = 2)
     private BigDecimal packageCharge = BigDecimal.ZERO;

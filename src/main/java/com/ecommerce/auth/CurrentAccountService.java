@@ -49,6 +49,13 @@ public class CurrentAccountService {
     @Transactional
     public CurrentAccountData resolveCurrentAccount(String authorizationHeader) {
         String token = extractBearerToken(authorizationHeader);
+        if (token.startsWith("sk_plg_")) {
+            // Plugin API tokens never resolve to a dashboard session; their hashes live in a
+            // separate table, so this is defense-in-depth plus a clearer error than "invalid token".
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED,
+                    "Plugin API tokens cannot access this endpoint. Use the /api/v1/plugin endpoints.");
+        }
         String tokenHash = AuthSupport.hashToken(token);
         SessionMatch sessionMatch = findSession(tokenHash)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid or expired access token"));

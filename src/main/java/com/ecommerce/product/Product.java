@@ -2,7 +2,9 @@ package com.ecommerce.product;
 
 import com.ecommerce.tag.Tag;
 import jakarta.persistence.CascadeType;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -175,6 +177,21 @@ public class Product {
             joinColumns = @JoinColumn(name = "product_id"),
             inverseJoinColumns = @JoinColumn(name = "tag_id"))
     private Set<Tag> tags = new LinkedHashSet<>();
+
+    /** Related products (cross-sell), stored as ordered snapshots. */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @JoinColumn(name = "product_id")
+    @OrderBy("position ASC")
+    private List<RelatedProduct> relatedProducts = new ArrayList<>();
+
+    /**
+     * Public ids of products the merchant dismissed from the auto "related" suggestions.
+     * Suggestions (same-category products) exclude these so a removed one never reappears.
+     */
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(name = "product_dismissed_related", joinColumns = @JoinColumn(name = "product_id"))
+    @Column(name = "dismissed_public_product_id", length = 36)
+    private Set<String> dismissedRelatedProductIds = new LinkedHashSet<>();
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

@@ -11,4 +11,5 @@ public record CategorySummaryData(
         String image,
         String parentPublicId,
         int productCount,
+        boolean active,
         Instant createdAt) {}

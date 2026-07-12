@@ -3,7 +3,6 @@ package com.ecommerce.order;
 import java.math.BigDecimal;
 
 public record OrderLineItemData(
-        String id,
         String productPublicId,
         String name,
         String sku,
@@ -13,4 +12,8 @@ public record OrderLineItemData(
         BigDecimal lineTotal,
         boolean taxable,
         BigDecimal taxRate,
-        String image) {}
+        String image,
+        String discountType,
+        BigDecimal discountValue,
+        String discountReason,
+        BigDecimal discountAmount) {}

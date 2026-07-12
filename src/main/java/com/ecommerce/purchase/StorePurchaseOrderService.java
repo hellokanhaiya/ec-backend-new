@@ -3,6 +3,7 @@ package com.ecommerce.purchase;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
+import com.ecommerce.billing.EntitlementService;
 import com.ecommerce.product.Product;
 import com.ecommerce.product.ProductRepository;
 import com.ecommerce.store.StoreProfile;
@@ -39,6 +40,7 @@ public class StorePurchaseOrderService {
     private final StoreProfileRepository storeProfileRepository;
     private final StoreWarehouseService warehouseService;
     private final StoreInventoryService inventoryService;
+    private final EntitlementService entitlementService;
 
     public StorePurchaseOrderService(
             PurchaseOrderRepository purchaseOrderRepository,
@@ -47,7 +49,8 @@ public class StorePurchaseOrderService {
             ProductRepository productRepository,
             StoreProfileRepository storeProfileRepository,
             StoreWarehouseService warehouseService,
-            StoreInventoryService inventoryService) {
+            StoreInventoryService inventoryService,
+            EntitlementService entitlementService) {
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.supplierRepository = supplierRepository;
         this.sequenceRepository = sequenceRepository;
@@ -55,19 +58,34 @@ public class StorePurchaseOrderService {
         this.storeProfileRepository = storeProfileRepository;
         this.warehouseService = warehouseService;
         this.inventoryService = inventoryService;
+        this.entitlementService = entitlementService;
     }
 
     public PurchaseOrderListData list(
-            String storeId, String search, String status, String supplierSearch, int page, int size) {
+            String storeId,
+            String search,
+            String status,
+            String supplierSearch,
+            String supplierIds,
+            String dateFrom,
+            String dateTo,
+            int page,
+            int size) {
         List<PurchaseOrder> all = purchaseOrderRepository.findByStoreIdOrderByCreatedAtDesc(storeId);
         String query = normalizeSearch(search);
         String supplierQuery = normalizeSearch(supplierSearch);
-        PurchaseOrderStatus statusFilter = parseStatusFilter(status);
+        Set<PurchaseOrderStatus> statusFilters = parseStatusFilters(status);
+        Set<String> supplierIdFilters = parseIdFilters(supplierIds);
+        Instant createdFrom = parseInstant(dateFrom);
+        Instant createdTo = parseInstant(dateTo);
 
         List<PurchaseOrder> filtered = all.stream()
-                .filter(order -> statusFilter == null || order.getStatus() == statusFilter)
+                .filter(order -> statusFilters.isEmpty() || statusFilters.contains(order.getStatus()))
                 .filter(order -> query.isEmpty() || searchable(order).contains(query))
                 .filter(order -> supplierQuery.isEmpty() || supplierMatches(order, supplierQuery))
+                .filter(order -> supplierIdFilters.isEmpty()
+                        || (order.getSupplierPublicId() != null && supplierIdFilters.contains(order.getSupplierPublicId())))
+                .filter(order -> withinRange(order.getCreatedAt(), createdFrom, createdTo))
                 .toList();
 
         long total = filtered.size();
@@ -101,6 +119,7 @@ public class StorePurchaseOrderService {
     }
 
     public PurchaseOrderData create(String storeId, String ownerPublicUserId, PurchaseOrderRequest request) {
+        entitlementService.require(storeId, EntitlementService.PURCHASE_ORDERS);
         if (request == null) {
             throw new ResponseStatusException(BAD_REQUEST, "Request body is required");
         }
@@ -416,11 +435,37 @@ public class StorePurchaseOrderService {
         }
     }
 
-    private PurchaseOrderStatus parseStatusFilter(String value) {
+    // Accepts a single status, a comma-separated list (e.g. "draft,ordered"), or
+    // "all"/blank for no filter. Lets the listing's faceted Status filter select
+    // several statuses at once while still supporting the legacy single value.
+    private Set<PurchaseOrderStatus> parseStatusFilters(String value) {
         if (value == null || value.isBlank() || value.equalsIgnoreCase("all")) {
-            return null;
+            return Set.of();
         }
-        return parseStatus(value);
+        Set<PurchaseOrderStatus> statuses = new LinkedHashSet<>();
+        for (String token : value.split(",")) {
+            String trimmed = token.trim();
+            if (!trimmed.isEmpty() && !trimmed.equalsIgnoreCase("all")) {
+                statuses.add(parseStatus(trimmed));
+            }
+        }
+        return statuses;
+    }
+
+    // Split a comma-separated id list (e.g. supplier public ids from the Supplier
+    // faceted filter) into a set; blank means "no filter".
+    private static Set<String> parseIdFilters(String value) {
+        if (value == null || value.isBlank()) {
+            return Set.of();
+        }
+        Set<String> ids = new LinkedHashSet<>();
+        for (String token : value.split(",")) {
+            String trimmed = token.trim();
+            if (!trimmed.isEmpty()) {
+                ids.add(trimmed);
+            }
+        }
+        return ids;
     }
 
     private PurchaseOrder require(String storeId, String publicPurchaseOrderId) {
@@ -585,6 +630,34 @@ public class StorePurchaseOrderService {
 
     private static String normalizeSearch(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    // Parse an ISO-8601 instant filter bound (e.g. "2026-07-01T00:00:00Z"); a
+    // blank or malformed value means "no bound" rather than an error.
+    private static Instant parseInstant(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Instant.parse(value.trim());
+        } catch (DateTimeParseException ex) {
+            return null;
+        }
+    }
+
+    // Inclusive range check used by the list date filter. A null createdAt is
+    // excluded once any bound is set so filtered results stay predictable.
+    private static boolean withinRange(Instant createdAt, Instant from, Instant to) {
+        if (from == null && to == null) {
+            return true;
+        }
+        if (createdAt == null) {
+            return false;
+        }
+        if (from != null && createdAt.isBefore(from)) {
+            return false;
+        }
+        return to == null || !createdAt.isAfter(to);
     }
 
     private static String normalize(String value) {

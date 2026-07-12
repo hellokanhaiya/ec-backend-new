@@ -81,6 +81,11 @@ public class Category {
     @Column(name = "seo_keyword", length = 255)
     private String seoKeyword;
 
+    /** Whether the category is enabled. Disabled categories stay in admin but are
+     * hidden from the storefront. Defaults to enabled. */
+    @Column(name = "active", nullable = false)
+    private boolean active = true;
+
     /** Manual display order within the store (lower = earlier). New categories are
      * appended; the reorder endpoint rewrites these. */
     @Column(name = "sort_position", nullable = false)

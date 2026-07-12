@@ -51,11 +51,14 @@ public class PurchaseOrderController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String supplierSearch,
+            @RequestParam(required = false) String supplierIds,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.ORDERS_PURCHASE, AccessLevel.VIEW);
-        PurchaseOrderListData data =
-                purchaseOrderService.list(scope.storeId(), search, status, supplierSearch, page, size);
+        PurchaseOrderListData data = purchaseOrderService.list(
+                scope.storeId(), search, status, supplierSearch, supplierIds, dateFrom, dateTo, page, size);
         return ok("Purchase orders loaded", data);
     }
 

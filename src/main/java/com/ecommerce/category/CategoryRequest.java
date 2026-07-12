@@ -11,5 +11,6 @@ public record CategoryRequest(
         String seoTitle,
         String seoDescription,
         String seoKeyword,
+        Boolean active,
         List<String> tags,
         List<CategoryProductRequest> products) {}

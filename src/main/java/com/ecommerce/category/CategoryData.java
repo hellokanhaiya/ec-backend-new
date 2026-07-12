@@ -18,5 +18,6 @@ public record CategoryData(
         List<String> tags,
         List<CategoryProductData> products,
         int productCount,
+        boolean active,
         Instant createdAt,
         Instant updatedAt) {}

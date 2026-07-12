@@ -7,6 +7,7 @@ import java.util.List;
 public record OrderSummaryData(
         String id,
         String orderNumber,
+        String status,
         String customer,
         String email,
         String phone,

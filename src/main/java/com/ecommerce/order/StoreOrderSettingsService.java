@@ -43,6 +43,9 @@ public class StoreOrderSettingsService {
         if (request.orderPrefix() != null && !request.orderPrefix().isBlank()) {
             settings.setOrderPrefix(request.orderPrefix().trim());
         }
+        if (request.draftPrefix() != null && !request.draftPrefix().isBlank()) {
+            settings.setDraftPrefix(request.draftPrefix().trim());
+        }
         if (request.orderNumberPadding() != null && request.orderNumberPadding() > 0) {
             settings.setOrderNumberPadding(request.orderNumberPadding());
         }
@@ -72,6 +75,14 @@ public class StoreOrderSettingsService {
             settings.setDefaultTaxRate(nonNegative(request.defaultTaxRate(), "Default tax rate"));
         }
 
+        // Resetting the counter each financial year without embedding the year label would
+        // repeat numbers across years (e.g. two ORD-0001). Require the label when reset is on.
+        if (settings.isFinancialYearReset() && !settings.isIncludeFinancialYear()) {
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "Turn on \"Include financial year\" to reset the counter each year, otherwise order numbers would repeat.");
+        }
+
         return toData(settingsRepository.save(settings));
     }
 
@@ -87,6 +98,7 @@ public class StoreOrderSettingsService {
         return new OrderSettingsData(
                 s.getStoreId(),
                 s.getOrderPrefix(),
+                s.getDraftPrefix(),
                 s.getOrderNumberPadding(),
                 s.isFinancialYearReset(),
                 s.isIncludeFinancialYear(),
@@ -95,20 +107,31 @@ public class StoreOrderSettingsService {
                 s.getDefaultPackageCharge(),
                 s.getFreeShippingThreshold(),
                 s.getDefaultTaxRate(),
-                nextOrderNumberPreview(s));
+                nextOrderNumberPreview(s),
+                nextDraftNumberPreview(s));
     }
 
     /** What the next created order would be numbered, without consuming the counter. */
     private String nextOrderNumberPreview(OrderSettings s) {
+        return previewFor(s, OrderNumberFormatter.periodKey(s, Instant.now()), false);
+    }
+
+    /** What the next saved draft would be numbered, without consuming the counter. */
+    private String nextDraftNumberPreview(OrderSettings s) {
+        return previewFor(s, OrderNumberFormatter.draftPeriodKey(s, Instant.now()), true);
+    }
+
+    private String previewFor(OrderSettings s, String periodKey, boolean draft) {
         Instant now = Instant.now();
-        String periodKey = OrderNumberFormatter.periodKey(s, now);
         long lastValue = s.getStoreId() == null
                 ? 0L
                 : sequenceRepository
                         .findByStoreIdAndPeriodKey(s.getStoreId(), periodKey)
                         .map(OrderNumberSequence::getLastValue)
                         .orElse(0L);
-        return OrderNumberFormatter.format(s, now, lastValue + 1);
+        return draft
+                ? OrderNumberFormatter.format(s, now, lastValue + 1, s.getDraftPrefix(), "DR")
+                : OrderNumberFormatter.format(s, now, lastValue + 1);
     }
 
     private static BigDecimal nonNegative(BigDecimal value, String field) {

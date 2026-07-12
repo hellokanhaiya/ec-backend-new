@@ -2,6 +2,8 @@ package com.ecommerce.order;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -48,4 +50,19 @@ public class StoreOrderLineItem {
 
     @Column(name = "image", length = 1000)
     private String image;
+
+    // Per-item (individual) discount entered by the merchant; value is per unit.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "discount_type", length = 16)
+    private DiscountType discountType;
+
+    @Column(name = "discount_value", precision = 15, scale = 2)
+    private BigDecimal discountValue;
+
+    @Column(name = "discount_reason", length = 255)
+    private String discountReason;
+
+    /** Total discount applied to this line (already reflected in lineTotal). */
+    @Column(name = "discount_amount", nullable = false, precision = 15, scale = 2)
+    private BigDecimal discountAmount = BigDecimal.ZERO;
 }

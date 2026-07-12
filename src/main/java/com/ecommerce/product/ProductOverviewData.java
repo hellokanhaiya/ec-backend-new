@@ -1,9 +1,11 @@
 package com.ecommerce.product;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /** KPI aggregates for the products page header. Fetched once and kept in sync
- * client-side on create/update/delete, like the customer overview. */
+ * client-side on create/update/delete, like the customer overview. The distinct
+ * {@code vendors} feed the advanced filter's vendor picker. */
 public record ProductOverviewData(
         long totalProducts,
         long active,
@@ -11,4 +13,5 @@ public record ProductOverviewData(
         long archived,
         long lowStock,
         long categories,
-        BigDecimal avgPrice) {}
+        BigDecimal avgPrice,
+        List<String> vendors) {}

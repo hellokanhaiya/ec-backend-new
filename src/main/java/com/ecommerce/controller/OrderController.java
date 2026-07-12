@@ -12,6 +12,7 @@ import com.ecommerce.order.OrderOverviewData;
 import com.ecommerce.order.OrderRequest;
 import com.ecommerce.order.OrderSettingsData;
 import com.ecommerce.order.OrderSettingsRequest;
+import com.ecommerce.order.RecordPaymentRequest;
 import com.ecommerce.order.StoreOrderService;
 import com.ecommerce.order.StoreOrderSettingsService;
 import java.time.Instant;
@@ -56,6 +57,7 @@ public class OrderController {
             @PathVariable String audience,
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) String status,
             @RequestParam(required = false) String payment,
             @RequestParam(required = false) String fulfillment,
             @RequestParam(required = false) String dateFrom,
@@ -65,7 +67,7 @@ public class OrderController {
             @RequestParam(defaultValue = "20") int size) {
         StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.ORDERS_ALL, AccessLevel.VIEW);
         OrderListData data = orderService.list(
-                scope.storeId(), search, payment, fulfillment, dateFrom, dateTo, customerName, page, size);
+                scope.storeId(), search, status, payment, fulfillment, dateFrom, dateTo, customerName, page, size);
         return ok("Orders loaded", data);
     }
 
@@ -107,6 +109,17 @@ public class OrderController {
         StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.ORDERS_ALL, AccessLevel.EDIT);
         OrderData data = orderService.update(scope.storeId(), publicOrderId, request);
         return ok("Order updated", data);
+    }
+
+    @PostMapping("/{audience}/auth/orders/{publicOrderId}/payment")
+    public ResponseEntity<Map<String, Object>> recordPayment(
+            @PathVariable String audience,
+            @PathVariable String publicOrderId,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody RecordPaymentRequest request) {
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.ORDERS_ALL, AccessLevel.EDIT);
+        OrderData data = orderService.recordPayment(scope.storeId(), publicOrderId, request);
+        return ok("Payment recorded", data);
     }
 
     @DeleteMapping("/{audience}/auth/orders/{publicOrderId}")

@@ -4,6 +4,7 @@ import com.ecommerce.access.AccessControlService;
 import com.ecommerce.access.AccessLevel;
 import com.ecommerce.access.PermissionCatalog;
 import com.ecommerce.access.StoreAccessScope;
+import com.ecommerce.category.CategoryActiveRequest;
 import com.ecommerce.category.CategoryBulkDeleteRequest;
 import com.ecommerce.category.CategoryData;
 import com.ecommerce.category.CategoryListData;
@@ -82,6 +83,18 @@ public class CategoryController {
             @RequestBody CategoryRequest request) {
         StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.PRODUCTS_CATEGORIES, AccessLevel.EDIT);
         CategoryData data = categoryService.update(scope.storeId(), publicCategoryId, request);
+        return ok("Category updated", data);
+    }
+
+    @PutMapping("/{audience}/auth/categories/{publicCategoryId}/active")
+    public ResponseEntity<Map<String, Object>> setActive(
+            @PathVariable String audience,
+            @PathVariable String publicCategoryId,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody CategoryActiveRequest request) {
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.PRODUCTS_CATEGORIES, AccessLevel.EDIT);
+        boolean active = request != null && Boolean.TRUE.equals(request.active());
+        CategoryData data = categoryService.setActive(scope.storeId(), publicCategoryId, active);
         return ok("Category updated", data);
     }
 

@@ -17,6 +17,8 @@ import com.ecommerce.product.ProductListData;
 import com.ecommerce.product.ProductOverviewData;
 import com.ecommerce.product.ProductPickerListData;
 import com.ecommerce.product.ProductRequest;
+import com.ecommerce.product.ProductSummaryData;
+import com.ecommerce.product.RelatedSuggestionRequest;
 import com.ecommerce.product.StoreProductService;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -63,13 +65,18 @@ public class ProductController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String category,
+            @RequestParam(required = false) String vendor,
+            @RequestParam(required = false) String minPrice,
+            @RequestParam(required = false) String maxPrice,
+            @RequestParam(required = false) String stockLevel,
+            @RequestParam(required = false) String sort,
             @RequestParam(required = false) String dateFrom,
             @RequestParam(required = false) String dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "0") int size) {
         StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.PRODUCTS_LIST, AccessLevel.VIEW);
-        ProductListData data =
-                productService.list(scope.storeId(), search, status, category, dateFrom, dateTo, page, size);
+        ProductListData data = productService.list(
+                scope.storeId(), search, status, category, vendor, minPrice, maxPrice, stockLevel, sort, dateFrom, dateTo, page, size);
         return ok("Products loaded", data);
     }
 
@@ -88,6 +95,16 @@ public class ProductController {
             @RequestHeader(value = "Authorization", required = false) String authorization) {
         StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.PRODUCTS_LIST, AccessLevel.VIEW);
         return ok("Product redirects loaded", productService.redirects(scope.storeId()));
+    }
+
+    @PostMapping("/{audience}/auth/products/related-suggestions")
+    public ResponseEntity<Map<String, Object>> relatedSuggestions(
+            @PathVariable String audience,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody(required = false) RelatedSuggestionRequest request) {
+        StoreScope scope = resolveScope(authorization, audience, PermissionCatalog.PRODUCTS_LIST, AccessLevel.VIEW);
+        List<ProductSummaryData> data = productService.relatedSuggestions(scope.storeId(), request);
+        return ok("Related suggestions loaded", data);
     }
 
     @GetMapping("/{audience}/auth/products/browse")

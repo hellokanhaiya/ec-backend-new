@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 
 public record OrderSettingsRequest(
         String orderPrefix,
+        String draftPrefix,
         Integer orderNumberPadding,
         Boolean financialYearReset,
         Boolean includeFinancialYear,
