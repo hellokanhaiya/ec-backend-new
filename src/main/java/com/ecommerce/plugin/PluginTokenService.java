@@ -69,6 +69,37 @@ public class PluginTokenService {
                 token.getCreatedAt());
     }
 
+    /**
+     * Issues a token attached to an existing app (dev-register flow) instead of auto-creating a
+     * private app the way {@link #create} does.
+     */
+    @Transactional
+    public TokenCreatedData createForApp(PluginApp app, Long userId, List<String> requestedScopes) {
+        Set<String> scopes = normalizeScopes(requestedScopes);
+        String plaintext = PluginTokenSupport.generateToken();
+
+        PluginApiToken token = new PluginApiToken();
+        token.setAppId(app.getId());
+        token.setStoreId(app.getStoreId());
+        token.setOrgId(app.getOrgId());
+        token.setName(app.getName());
+        token.setTokenHash(PluginTokenSupport.hashToken(plaintext));
+        token.setTokenPrefix(PluginTokenSupport.TOKEN_PREFIX);
+        token.setLastFour(PluginTokenSupport.lastFour(plaintext));
+        token.setScopes(String.join(",", scopes));
+        token.setCreatedByUserId(userId);
+        token = tokenRepository.save(token);
+
+        return new TokenCreatedData(
+                token.getPublicTokenId(),
+                token.getName(),
+                plaintext,
+                PluginTokenSupport.maskToken(token.getTokenPrefix(), token.getLastFour()),
+                List.copyOf(scopes),
+                token.getExpiresAt(),
+                token.getCreatedAt());
+    }
+
     @Transactional(readOnly = true)
     public List<TokenSummaryData> list(String storeId) {
         List<TokenSummaryData> summaries = new ArrayList<>();

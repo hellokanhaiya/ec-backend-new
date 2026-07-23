@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -56,6 +57,32 @@ public class PluginApp {
 
     @Column(name = "created_by_user_id")
     private Long createdByUserId;
+
+    // Base URL of the developer-hosted plugin service; iframe pages and direct actions resolve
+    // against it. Null for plain API-token apps that declare no UI extensions.
+    @Column(name = "app_url", length = 500)
+    private String appUrl;
+
+    @Column(name = "manifest_url", length = 500)
+    private String manifestUrl;
+
+    // The validated manifest exactly as last fetched; the extensions feed is served from this.
+    @Lob
+    @Column(name = "manifest_json", columnDefinition = "LONGTEXT")
+    private String manifestJson;
+
+    @Column(name = "manifest_version", length = 40)
+    private String manifestVersion;
+
+    // Shared secret between platform and this app: signs context JWTs handed to the plugin's
+    // iframe and HMACs direct-action payloads. Shown once at registration, stored raw because
+    // the platform must sign with it (unlike token hashes).
+    @Column(name = "signing_secret", length = 100)
+    private String signingSecret;
+
+    // Dev-mode apps may use localhost/private manifest + app URLs; production apps may not.
+    @Column(name = "dev_mode", nullable = false)
+    private boolean devMode;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

@@ -59,4 +59,26 @@ public class AccessControlService {
                 account.user().userId(),
                 owner);
     }
+
+    /**
+     * Resolve audience + store membership without enforcing a page permission — for endpoints
+     * that serve cross-page UI metadata (e.g. the plugin extensions feed) where any member of
+     * the store may look, and the data behind each surface stays guarded by its own permission.
+     */
+    public StoreAccessScope requireMember(String authorization, String audience) {
+        CurrentAccountData account = currentAccountService.resolveCurrentAccount(authorization);
+        if (account.audience() != AuthAudience.from(audience)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Audience mismatch");
+        }
+        if (account.store() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Store setup required before continuing");
+        }
+        StoreAccessData access = account.access();
+        return new StoreAccessScope(
+                account.store().storeId(),
+                account.store().orgId(),
+                account.user().publicUserId(),
+                account.user().userId(),
+                access != null && access.isOwner());
+    }
 }

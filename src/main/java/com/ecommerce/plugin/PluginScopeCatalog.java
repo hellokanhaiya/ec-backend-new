@@ -4,11 +4,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The canonical taxonomy of plugin API scopes — boolean, read-only capabilities a plugin token
- * can hold, parallel to (not merged with) {@link com.ecommerce.access.PermissionCatalog}, which
- * stays the human/RBAC page taxonomy. The catalog deliberately contains only read/export/document
- * scopes: plugin tokens can never be granted order create/edit/dispatch, user creation, or any
- * other admin write. Groups mirror the dashboard permission groups for a familiar picker.
+ * The canonical taxonomy of plugin API scopes — boolean capabilities a plugin token can hold,
+ * parallel to (not merged with) {@link com.ecommerce.access.PermissionCatalog}, which stays the
+ * human/RBAC page taxonomy. The catalog is read/export/document scopes plus narrowly-scoped
+ * plugin-owned writes: metafields (locked to the app's own namespace) and product SEO fields
+ * (a dedicated three-field endpoint). Plugin tokens can never be granted order
+ * create/edit/dispatch, pricing/inventory writes, user creation, or any other admin write.
+ * Groups mirror the dashboard permission groups for a familiar picker.
  */
 public final class PluginScopeCatalog {
 
@@ -50,6 +52,11 @@ public final class PluginScopeCatalog {
 
     // Marketplace
     public static final String VENDORS_READ = "vendors:read";
+
+    // Plugin-owned writes
+    public static final String METAFIELDS_READ = "metafields:read";
+    public static final String METAFIELDS_WRITE = "metafields:write";
+    public static final String PRODUCTS_WRITE_SEO = "products:write-seo";
 
     private static final List<PluginScopeRule> RULES = List.of(
             // Orders
@@ -112,7 +119,15 @@ public final class PluginScopeCatalog {
 
             // Marketplace
             new PluginScopeRule(VENDORS_READ, "Marketplace", "Read vendors",
-                    "List marketplace vendors and view details."));
+                    "List marketplace vendors and view details."),
+
+            // Plugin data
+            new PluginScopeRule(METAFIELDS_READ, "Plugin data", "Read metafields",
+                    "Read this app's own metafields on products, orders, and app settings."),
+            new PluginScopeRule(METAFIELDS_WRITE, "Plugin data", "Write metafields",
+                    "Write this app's own metafields on products, orders, and app settings."),
+            new PluginScopeRule(PRODUCTS_WRITE_SEO, "Plugin data", "Write product SEO",
+                    "Update product SEO title, SEO description, and slug — no other product fields."));
 
     private PluginScopeCatalog() {}
 
